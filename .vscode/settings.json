@@ -1,0 +1,9 @@
+{
+  "clangd.arguments": [
+    "--query-driver=/Users/crosstyan/.espressif/tools/xtensa-esp32-elf/esp-12.2.0_20230208/xtensa-esp32-elf/bin/*",
+  ],
+  "[python]": {
+    "editor.defaultFormatter": "ms-python.black-formatter"
+  },
+  "python.formatting.provider": "none"
+}

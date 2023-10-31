@@ -1,0 +1,18 @@
+[submodule "components/etl/etl"]
+	path = components/etl/etl
+	url = https://github.com/ETLCPP/etl
+[submodule "components/RadioLib"]
+	path = components/RadioLib
+	url = https://github.com/crosstyan/RadioLib
+[submodule "components/cnl/cnl"]
+	path = components/cnl/cnl
+	url = https://github.com/johnmcfarlane/cnl
+[submodule "components/esp-nimble-cpp"]
+	path = components/esp-nimble-cpp
+	url = https://github.com/h2zero/esp-nimble-cpp
+[submodule "components/cpp-channel/cpp-channel"]
+	path = components/cpp-channel/cpp-channel
+	url = https://github.com/andreiavrammsd/cpp-channel
+[submodule "components/nanopb/nanopb"]
+	path = components/nanopb/nanopb
+	url = https://github.com/nanopb/nanopb

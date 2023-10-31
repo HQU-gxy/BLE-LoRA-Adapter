@@ -1,0 +1,5 @@
+**/build/
+cmake-build-debug
+.idea
+.cache
+__pycache__
