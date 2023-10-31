@@ -19,3 +19,6 @@
 [submodule "components/etl"]
 	path = components/etl/etl
 	url = https://github.com/ETLCPP/etl
+[submodule "components/protobuf/nanopb"]
+	path = components/protobuf/nanopb
+	url = https://github.com/nanopb/nanopb
