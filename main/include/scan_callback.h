@@ -68,10 +68,33 @@ public:
   using addr_ptr_t   = std::unique_ptr<white_list::Addr>;
 
 private:
-  addr_ptr_t target_addr = nullptr;
-  device_ptr_t device    = nullptr;
-  // null if the scanning task is not running
+  static constexpr auto TAG = "ScanManager";
+  addr_ptr_t target_addr    = nullptr;
+  device_ptr_t device       = nullptr;
+  /**
+   * @note could be nullptr if the scanning task is not running
+   *  (either haven't kick-started or the device already connected)
+   */
   TaskHandle_t scan_task_handle = nullptr;
+
+  class ClientCallback : public NimBLEClientCallbacks {
+    ScanManager *scan_manager_ptr;
+
+  public:
+    explicit ClientCallback(ScanManager *scan_manager) : scan_manager_ptr(scan_manager) {}
+    void onDisconnect(NimBLEClient *pClient, int reason) override {
+      const auto TAG = "ClientCallback::onDisconnect";
+      ESP_LOGI(TAG, "Disconnected from %s", pClient->getPeerAddress().toString().c_str());
+      [[likely]] if (scan_manager_ptr != nullptr) {
+        bool ok = scan_manager_ptr->start_scanning_task();
+        if (!ok) {
+          ESP_LOGW(TAG, "scanning task already running");
+        }
+      } else {
+        ESP_LOGE(TAG, "scan_manager_ptr is nullptr");
+      }
+    }
+  };
 
 public:
   std::function<void(HeartMonitor &device, uint8_t *, size_t)> on_data = nullptr;
@@ -84,7 +107,10 @@ public:
       device = nullptr;
     }
     target_addr = std::make_unique<white_list::Addr>(std::move(addr_));
-    // start scanning task
+    bool ok     = start_scanning_task();
+    if (!ok) {
+      ESP_LOGW(TAG, "scanning task already running");
+    }
   }
 
   /**
@@ -155,11 +181,13 @@ public:
         pClient = self.device->client;
         assert(pClient != nullptr);
       } else {
-        pClient  = NimBLEDevice::getClientByPeerAddress(nimble_address);
-        auto dev = HeartMonitor{
-            .name   = name,
-            .addr   = addr,
-            .client = pClient,
+        pClient              = NimBLEDevice::getClientByPeerAddress(nimble_address);
+        auto pClientCallback = new ClientCallback{&self};
+        auto dev             = HeartMonitor{
+                        .name      = name,
+                        .addr      = addr,
+                        .client    = pClient,
+                        .callbacks = pClientCallback,
         };
         self.device = std::make_unique<HeartMonitor>(std::move(dev));
       }

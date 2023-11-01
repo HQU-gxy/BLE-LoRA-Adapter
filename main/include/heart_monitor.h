@@ -15,6 +15,9 @@ struct HeartMonitor {
   std::string name;
   addr_t addr{0};
   NimBLEClient *client             = nullptr;
+  // I'm not sure if the callback would be deleted when the client is deleted
+  // It should be...
+  NimBLEClientCallbacks *callbacks = nullptr;
 };
 }
 
