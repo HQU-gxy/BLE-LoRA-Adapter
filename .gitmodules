@@ -12,7 +12,8 @@
 	url = https://github.com/h2zero/esp-nimble-cpp
 [submodule "components/cpp-channel/cpp-channel"]
 	path = components/cpp-channel/cpp-channel
-	url = https://github.com/andreiavrammsd/cpp-channel
+	url = https://github.com/crosstyan/cpp-channel
+	branch = no-exception
 [submodule "components/nanopb/nanopb"]
 	path = components/nanopb/nanopb
 	url = https://github.com/nanopb/nanopb
