@@ -42,7 +42,7 @@ struct Name {
 };
 
 struct Addr {
-  std::array<uint8_t, BLE_MAC_ADDR_SIZE> addr;
+  etl::array<uint8_t, BLE_MAC_ADDR_SIZE> addr;
 };
 
 using item_t       = std::variant<Name, Addr>;
