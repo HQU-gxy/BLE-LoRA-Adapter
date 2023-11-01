@@ -11,7 +11,7 @@
 #include <etl/flat_map.h>
 #include <NimBLEDevice.h>
 #include "wifi_entity.h"
-#include "wit_device.h"
+#include "heart_monitor.h"
 #include "utils.h"
 
 namespace blue {
@@ -61,12 +61,12 @@ void print_services_chars(NimBLEClient &client) {
 }
 
 class ScanCallback : public NimBLEScanCallbacks {
-  using addr_t       = WitDevice::addr_t;
-  using device_map_t = etl::vector<WitDevice, MAX_DEVICE_NUM>;
+  using addr_t       = HeartMonitor::addr_t;
+  using device_map_t = etl::vector<HeartMonitor, MAX_DEVICE_NUM>;
   device_map_t devices{};
 
 public:
-  std::function<void(WitDevice &device, uint8_t *, size_t)> on_data = nullptr;
+  std::function<void(HeartMonitor &device, uint8_t *, size_t)> on_data = nullptr;
   void onResult(NimBLEAdvertisedDevice *advertisedDevice) override {
     const auto TAG = "ScanCallback::onResult";
     auto name      = advertisedDevice->getName();
@@ -84,7 +84,7 @@ public:
       auto nimble_address = advertisedDevice->getAddress();
       auto addr_native    = nimble_address.getNative();
       auto addr           = addr_t{};
-      std::copy(addr_native, addr_native + WitDevice::ADDR_SIZE, addr.begin());
+      std::copy(addr_native, addr_native + HeartMonitor::ADDR_SIZE, addr.begin());
       ESP_LOGI(TAG, "try to connect to %s (%s)", name.c_str(), nimble_address.toString().c_str());
       // for some reason the connection would block the scan callback for a long time
       // I have to create a new thread to do the connection
@@ -102,7 +102,7 @@ public:
           } else {
             ESP_LOGI(TAG, "device not found, creating a new one");
             pClient     = NimBLEDevice::createClient();
-            auto device = WitDevice{.addr = addr, .client = pClient};
+            auto device = HeartMonitor{.addr = addr, .client = pClient};
             devices.emplace_back(std::move(device));
             // might be race condition here
             found = &devices.back();
@@ -124,32 +124,6 @@ public:
             ESP_LOGE(TAG, "failed to get service");
             return;
           }
-          device.service = pService;
-          auto pReadChar = pService->getCharacteristic(NimBLEUUID{READ_CHAR});
-          if (!pReadChar) {
-            ESP_LOGE(TAG, "failed to get read char");
-            return;
-          }
-          device.read_char = pReadChar;
-          auto pWriteChar =
-              pService->getCharacteristic(NimBLEUUID{WRITE_CHAR});
-          if (!pWriteChar) {
-            ESP_LOGE(TAG, "failed to get write char");
-            return;
-          }
-          device.write_char = pWriteChar;
-
-          auto on_notify = [&self, &device](NimBLERemoteCharacteristic *pChar, uint8_t *pData, size_t length, bool isNotify) {
-            const auto TAG = "on_notify";
-            ESP_LOGD(TAG, "%s", utils::toHex(pData, length).c_str());
-            if (self.on_data != nullptr) {
-              self.on_data(device, pData, length);
-            }
-          };
-          ok = device.read_char->subscribe(true, on_notify);
-          if (!ok) {
-            ESP_LOGE(TAG, "failed to subscribe");
-          }
         }
       };
       auto param = new ConnectTaskParam{
@@ -167,27 +141,6 @@ public:
                   "connect", 4096, param, 5, &param->task_handle);
     }
   };
-  bool toDevice(addr_t &addr, uint8_t *data, size_t length) {
-    const auto TAG = "ScanCallback::toDevice";
-    auto found     = etl::find_if(devices.begin(), devices.end(), [&addr](const auto &device) {
-      return device.addr == addr;
-    });
-    if (found == devices.end()) {
-      ESP_LOGE(TAG, "device not found");
-      return false;
-    }
-    auto &device = *found;
-    if (!device.write_char) {
-      ESP_LOGE(TAG, "write char not found");
-      return false;
-    }
-    auto ok = device.write_char->writeValue(data, length, true);
-    if (!ok) {
-      ESP_LOGE(TAG, "failed to write");
-      return false;
-    }
-    return true;
-  }
 };
 }
 

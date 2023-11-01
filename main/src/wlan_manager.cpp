@@ -54,8 +54,6 @@ esp_err_t WlanManager::_register_wifi_handlers() {
           self._connect_task_handle = nullptr;
           vTaskDelete(old);
         }
-        // data, aside from event data, that is passed to the handler when it is called
-        // https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/system/esp_event.html#_CPPv426esp_event_handler_register16esp_event_base_t7int32_t19esp_event_handler_tPv
         // Event structure for IP_EVENT_STA_GOT_IP, IP_EVENT_ETH_GOT_IP events
         // https://docs.espressif.com/projects/esp-idf/en/v4.0.3/api-reference/network/tcpip_adapter.html
         auto *event   = (ip_event_got_ip_t *)event_data;
