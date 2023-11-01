@@ -15,6 +15,7 @@ message WhiteList {
 enum WhiteListCommand {
   // response with list
   REQUEST = 0;
+  DISCONNECT = 1;
 }
 
 enum WhiteListErrorCode {

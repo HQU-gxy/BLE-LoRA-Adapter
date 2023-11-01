@@ -14,7 +14,7 @@
 
 #ifdef SIMPLE_LOG
 #include "simple_log.h"
-#elif defined(ESP32)
+#elif defined(CONFIG_IDF_TARGET_ESP32) || defined(CONFIG_IDF_TARGET_ESP32C3)
 #include "esp_log.h"
 #endif
 

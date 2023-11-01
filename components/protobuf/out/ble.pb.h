@@ -12,7 +12,8 @@
 /* Enum definitions */
 typedef enum _WhiteListCommand {
     /* response with list */
-    WhiteListCommand_REQUEST = 0
+    WhiteListCommand_REQUEST = 0,
+    WhiteListCommand_DISCONNECT = 1
 } WhiteListCommand;
 
 typedef enum _WhiteListErrorCode {
@@ -59,8 +60,8 @@ extern "C" {
 
 /* Helper constants for enums */
 #define _WhiteListCommand_MIN WhiteListCommand_REQUEST
-#define _WhiteListCommand_MAX WhiteListCommand_REQUEST
-#define _WhiteListCommand_ARRAYSIZE ((WhiteListCommand)(WhiteListCommand_REQUEST+1))
+#define _WhiteListCommand_MAX WhiteListCommand_DISCONNECT
+#define _WhiteListCommand_ARRAYSIZE ((WhiteListCommand)(WhiteListCommand_DISCONNECT+1))
 
 #define _WhiteListErrorCode_MIN WhiteListErrorCode_OK
 #define _WhiteListErrorCode_MAX WhiteListErrorCode_OUT_OF_MEMORY
