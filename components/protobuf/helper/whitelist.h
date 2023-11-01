@@ -8,6 +8,7 @@
 #include <variant>
 #include <string>
 #include <regex>
+#include <etl/array.h>
 #include <etl/optional.h>
 #include <ble.pb.h>
 #include <array>

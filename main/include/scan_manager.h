@@ -97,7 +97,13 @@ private:
   };
 
 public:
-  std::function<void(HeartMonitor &device, uint8_t *, size_t)> on_data = nullptr;
+  [[nodiscard]] etl::optional<white_list::Addr> get_target_addr() const {
+    if (target_addr == nullptr) {
+      return etl::nullopt;
+    }
+    return etl::make_optional(*target_addr);
+  }
+  std::function<void(HeartMonitor &device, uint8_t * data, size_t size)> on_data = nullptr;
 
   /**
    * @brief set the target address to scan
@@ -105,16 +111,20 @@ public:
    * @effect disconnect the current device if connected
    *  and start the scanning task (should be started in the disconnection callback though...)
    */
-  void set_target_addr(addr_t addr) {
-    white_list::Addr addr_ = {std::move(addr)};
-    // disconnect current device
+  void set_target_addr(etl::optional<addr_t> addr) {
     if (device != nullptr) {
       device->client->disconnect();
       NimBLEDevice::deleteClient(device->client);
       device = nullptr;
     }
-    target_addr = std::make_unique<white_list::Addr>(std::move(addr_));
-    bool ok     = start_scanning_task();
+    if (addr.has_value()) {
+      white_list::Addr addr_ = {std::move(*addr)};
+      target_addr            = std::make_unique<white_list::Addr>(std::move(addr_));
+    } else {
+      ESP_LOGW(TAG, "target address is null");
+      target_addr = nullptr;
+    }
+    bool ok = start_scanning_task();
     if (!ok) {
       ESP_LOGW(TAG, "scanning task already running");
     }
@@ -226,6 +236,8 @@ public:
                             uint8_t *pData, size_t length, bool isNotify) {
         const auto TAG = "notify";
         if (self.on_data != nullptr) {
+          // I'm thinking create a new thread to avoid blocking the callback
+          // not sure if it's necessary
           self.on_data(*self.device, pData, length);
         }
       };

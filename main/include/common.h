@@ -20,11 +20,12 @@ namespace pin {
   constexpr auto DIO1 = GPIO_NUM_1;
   constexpr auto DIO2 = GPIO_NUM_2;
 }
-static const char *BLE_CHAR_HR_SERVICE_UUID     = "180d";
-static const char *BLE_CHAR_HEARTBEAT_UUID      = "048b8928-d0a5-43e2-ada9-b925ec62ba27";
-static const char *BLE_CHAR_DEVICE_UUID         = "12a481f0-9384-413d-b002-f8660566d3b0";
+
+static const char *BLE_CHAR_WHITE_LIST_UUID = "12a481f0-9384-413d-b002-f8660566d3b0";
 static const char *BLE_STANDARD_HR_SERVICE_UUID = "180d";
 static const char *BLE_STANDARD_HR_CHAR_UUID    = "2a37";
+static const char *BLE_CHAR_HR_SERVICE_UUID     = BLE_STANDARD_HR_SERVICE_UUID;
+static const char *BLE_CHAR_HR_CHAR_UUID        = BLE_STANDARD_HR_CHAR_UUID;
 constexpr auto BLE_NAME                         = "LoRA-Adapter";
 constexpr auto SCAN_TIME                        = std::chrono::milliseconds(750);
 // scan time + sleep time
