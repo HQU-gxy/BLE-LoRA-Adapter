@@ -7,17 +7,17 @@
 #include "pb_encode.h"
 #include <functional>
 
-#if defined(CONFIG_IDF_TARGET_ESP32) || defined(CONFIG_IDF_TARGET_ESP32C3)
+#if USE_ESP_LOG
 #define LOG_ERR(tag, fmt, ...) ESP_LOGE(tag, fmt, ##__VA_ARGS__)
-#elif defined(SIMPLE_LOG)
+#elif defined(USE_SIMPLE_LOG)
 #define LOG_ERR(tag, fmt, ...) LOG_E(tag, fmt, ##__VA_ARGS__)
 #else
 #define LOG_ERR(tag, fmt, ...) // Define an empty macro if none of the conditions are met
 #endif
 
-#if defined(CONFIG_IDF_TARGET_ESP32) || defined(CONFIG_IDF_TARGET_ESP32C3)
+#if USE_ESP_LOG
 #define LOG_INFO(tag, fmt, ...) ESP_LOGI(tag, fmt, ##__VA_ARGS__)
-#elif defined(SIMPLE_LOG)
+#elif defined(USE_SIMPLE_LOG)
 #define LOG_INFO(tag, fmt, ...) LOG_I(tag, fmt, ##__VA_ARGS__)
 #else
 #define LOG_INFO(tag, fmt, ...) // Define an empty macro if none of the conditions are met

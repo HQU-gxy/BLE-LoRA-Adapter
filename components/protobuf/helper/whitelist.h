@@ -12,9 +12,26 @@
 #include <ble.pb.h>
 #include <array>
 
-#ifdef SIMPLE_LOG
+#if defined(CONFIG_IDF_TARGET_ESP32)
+#define USE_ESP_LOG 1
+#elif defined(CONFIG_IDF_TARGET_ESP32C2)
+#define USE_ESP_LOG 1
+#elif defined(CONFIG_IDF_TARGET_ESP32C3)
+#define USE_ESP_LOG 1
+#elif defined(CONFIG_IDF_TARGET_ESP32S2)
+#define USE_ESP_LOG 1
+#elif defined(CONFIG_IDF_TARGET_ESP32S3)
+#define USE_ESP_LOG 1
+#elif defined(CONFIG_IDF_TARGET_ESP32H2)
+#define USE_ESP_LOG 1
+#elif defined(CONFIG_IDF_TARGET_ESP32C6)
+#define USE_ESP_LOG 1
+#endif
+
+// simple log implementation could be found in other repository
+#ifdef USE_SIMPLE_LOG
 #include "simple_log.h"
-#elif defined(CONFIG_IDF_TARGET_ESP32) || defined(CONFIG_IDF_TARGET_ESP32C3)
+#elif USE_ESP_LOG
 #include "esp_log.h"
 #endif
 
