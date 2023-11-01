@@ -98,6 +98,13 @@ private:
 
 public:
   std::function<void(HeartMonitor &device, uint8_t *, size_t)> on_data = nullptr;
+
+  /**
+   * @brief set the target address to scan
+   * @param addr the target address
+   * @effect disconnect the current device if connected
+   *  and start the scanning task (should be started in the disconnection callback though...)
+   */
   void set_target_addr(addr_t addr) {
     white_list::Addr addr_ = {std::move(addr)};
     // disconnect current device
@@ -192,14 +199,43 @@ public:
         self.device = std::make_unique<HeartMonitor>(std::move(dev));
       }
       auto &client = *pClient;
-      auto ok      = client.connect();
-      if (!ok) {
-        ESP_LOGE(TAG, "Failed to connect to %s", name.c_str());
-        return;
+      if (!client.isConnected()) {
+        auto ok = client.connect();
+        if (!ok) {
+          ESP_LOGE(TAG, "Failed to connect to %s", name.c_str());
+          return;
+        }
+      } else {
+        ESP_LOGI(TAG, "already connected to %s", name.c_str());
       }
       ESP_LOGI(TAG, "connected to %s", name.c_str());
-      self.stop_scanning_task();
       print_services_chars(client);
+      auto pService = client.getService(common::BLE_STANDARD_HR_SERVICE_UUID);
+      if (pService == nullptr) {
+        ESP_LOGE(TAG, "failed to get standard hr service");
+        client.disconnect();
+        return;
+      }
+      auto pChar = pService->getCharacteristic(common::BLE_STANDARD_HR_CHAR_UUID);
+      if (pChar == nullptr) {
+        ESP_LOGE(TAG, "failed to get standard hr char");
+        client.disconnect();
+        return;
+      }
+      auto notify = [&self](NimBLERemoteCharacteristic *pBLERemoteCharacteristic,
+                            uint8_t *pData, size_t length, bool isNotify) {
+        const auto TAG = "notify";
+        if (self.on_data != nullptr) {
+          self.on_data(*self.device, pData, length);
+        }
+      };
+      auto ok = pChar->subscribe(true, notify);
+      if (!ok) {
+        ESP_LOGE(TAG, "failed to subscribe to standard hr char");
+        client.disconnect();
+        return;
+      }
+      self.stop_scanning_task();
     };
     auto param = new ConnectTaskParam{
         .task_handle = nullptr,
