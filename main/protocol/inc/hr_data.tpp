@@ -11,8 +11,8 @@
 namespace HrLoRa::hr_data {
 static constexpr uint8_t magic = 0x63;
 struct t {
-  uint8_t key;
-  uint8_t hr;
+  uint8_t key = 0;
+  uint8_t hr  = 0;
 };
 consteval size_t size_needed() {
   // key + hr + magic

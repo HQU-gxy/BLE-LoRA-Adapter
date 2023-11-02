@@ -17,7 +17,7 @@ namespace query_device_by_mac {
   consteval size_t size_needed() {
     return BLE_ADDR_SIZE + 1;
   }
-  uint8_t magic = 0x37;
+  constexpr uint8_t magic = 0x37;
   size_t marshal(t &data, uint8_t *buffer, size_t size) {
     if (size < size_needed()) {
       return 0;
@@ -87,7 +87,7 @@ namespace hr_device {
 }
 
 namespace query_device_by_mac_response {
-  uint8_t magic = 0x47;
+  constexpr uint8_t magic = 0x47;
   struct t {
     addr_t repeater_addr{};
     name_map_key_t key                 = 0;
