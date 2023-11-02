@@ -59,6 +59,15 @@ size_t marshal(t &data, uint8_t *buffer, size_t size) {
 //
 // https://caml.inria.fr/pub/docs/oreilly-book/html/book-ora132.html
 // However, namespace could be treated as a struct
+template <unmarshallable T>
+etl::optional<t> unmarshal_helper(const uint8_t *buffer, size_t size) {
+  auto res = T::unmarshal(buffer, size);
+  if (res) {
+    return t{res.value()};
+  } else {
+    return etl::nullopt;
+  }
+}
 
 etl::optional<t> unmarshal(const uint8_t *buffer, size_t size) {
   if (size < 1) {
@@ -67,34 +76,16 @@ etl::optional<t> unmarshal(const uint8_t *buffer, size_t size) {
   auto magic = buffer[0];
   switch (magic) {
     case hr_data::magic: {
-      auto res = hr_data::unmarshal(buffer, size);
-      // cursed IIFE
-      // the reason why we need this is `etl::make_optional` only accepts lvalue
-      return res ? [&]() { auto temp = t{res.value()}; return etl::make_optional(temp); }() : etl::nullopt;
+      return unmarshal_helper<hr_data>(buffer, size);
     }
     case query_device_by_mac::magic: {
-      auto res = query_device_by_mac::unmarshal(buffer, size);
-      if (res) {
-        return t{res.value()};
-      } else {
-        return etl::nullopt;
-      }
+      return unmarshal_helper<query_device_by_mac>(buffer, size);
     }
     case query_device_by_mac_response::magic: {
-      auto res = query_device_by_mac_response::unmarshal(buffer, size);
-      if (res) {
-        return t{res.value()};
-      } else {
-        return etl::nullopt;
-      }
+      return unmarshal_helper<query_device_by_mac_response>(buffer, size);
     }
     case set_name_map_key::magic: {
-      auto res = set_name_map_key::unmarshal(buffer, size);
-      if (res) {
-        return t{res.value()};
-      } else {
-        return etl::nullopt;
-      }
+      return unmarshal_helper<set_name_map_key>(buffer, size);
     }
     default:
       return etl::nullopt;

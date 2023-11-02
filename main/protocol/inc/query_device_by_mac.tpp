@@ -10,15 +10,15 @@
 #include "hr_lora_common.tpp"
 
 namespace HrLoRa {
-namespace query_device_by_mac {
+struct query_device_by_mac {
   struct t {
     addr_t addr{};
   };
-  consteval size_t size_needed() {
+  static consteval size_t size_needed() {
     return BLE_ADDR_SIZE + 1;
   }
-  constexpr uint8_t magic = 0x37;
-  size_t marshal(t &data, uint8_t *buffer, size_t size) {
+  static constexpr uint8_t magic = 0x37;
+  static size_t marshal(const t &data, uint8_t *buffer, size_t size) {
     if (size < size_needed()) {
       return 0;
     }
@@ -28,7 +28,7 @@ namespace query_device_by_mac {
     }
     return size_needed();
   }
-  etl::optional<t> unmarshal(const uint8_t *buffer, size_t size) {
+  static etl::optional<t> unmarshal(const uint8_t *buffer, size_t size) {
     if (size < size_needed()) {
       return etl::nullopt;
     }
@@ -44,18 +44,18 @@ namespace query_device_by_mac {
 
     return data;
   }
-}
+};
 
-namespace hr_device {
+struct hr_device {
   struct t {
     addr_t addr{};
     // zero terminated string
     std::string name{};
   };
-  size_t size_needed(t &data) {
+  static size_t size_needed(const t &data) {
     return BLE_ADDR_SIZE + data.name.size() + 1;
   }
-  size_t marshal(t &data, uint8_t *buffer, size_t size) {
+  static size_t marshal(const t &data, uint8_t *buffer, size_t size) {
     if (size < size_needed(data)) {
       return 0;
     }
@@ -69,7 +69,7 @@ namespace hr_device {
     buffer[offset++] = 0;
     return offset;
   }
-  etl::optional<t> unmarshal(const uint8_t *buffer, size_t buffer_size) {
+  static etl::optional<t> unmarshal(const uint8_t *buffer, size_t buffer_size) {
     if (buffer_size < BLE_ADDR_SIZE) {
       return etl::nullopt;
     }
@@ -84,22 +84,22 @@ namespace hr_device {
     }
     return data;
   }
-}
+};
 
-namespace query_device_by_mac_response {
-  constexpr uint8_t magic = 0x47;
+struct query_device_by_mac_response {
+  static constexpr uint8_t magic = 0x47;
   struct t {
     addr_t repeater_addr{};
     name_map_key_t key                 = 0;
     etl::optional<hr_device::t> device = etl::nullopt;
   };
-  size_t size_needed(t &data) {
+  static size_t size_needed(const t &data) {
     return sizeof(magic) +
            BLE_ADDR_SIZE +
            sizeof(t::key) +
            (data.device ? hr_device::size_needed(*data.device) : 0);
   }
-  size_t marshal(t &data, uint8_t *buffer, size_t size) {
+  static size_t marshal(const t &data, uint8_t *buffer, size_t size) {
     if (size < size_needed(data)) {
       return 0;
     }
@@ -120,7 +120,7 @@ namespace query_device_by_mac_response {
     }
     return offset;
   }
-  etl::optional<t> unmarshal(const uint8_t *buffer, size_t size) {
+  static etl::optional<t> unmarshal(const uint8_t *buffer, size_t size) {
     if (size < BLE_ADDR_SIZE + sizeof(name_map_key_t)) {
       return etl::nullopt;
     }
@@ -142,7 +142,7 @@ namespace query_device_by_mac_response {
     }
     return data;
   }
-}
+};
 }
 
 #endif // BLE_LORA_ADAPTER_QUERY_DEVICE_BY_MAC_H
