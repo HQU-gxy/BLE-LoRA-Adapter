@@ -15,5 +15,5 @@ seq:
   - id: magic_0x37
     contents: [0x37]
     doc: a magic number
-  - id: mac
+  - id: repeater_addr
     type: common::ble_addr

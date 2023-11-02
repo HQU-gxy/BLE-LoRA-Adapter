@@ -7,6 +7,7 @@
 #include "whitelist_char_callback.h"
 #include "esp_hal.h"
 #include "common.h"
+#include "hr_lora.h"
 
 extern "C" void app_main();
 

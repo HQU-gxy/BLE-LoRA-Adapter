@@ -16,7 +16,7 @@ seq:
   - id: magic_0x79
     contents: [0x79]
     doc: a magic number (0x79)
-  - id: mac
+  - id: repeater_addr
     type: common::ble_addr
     doc: |
       The broadcast address (FF:FF:FF:FF:FF:FF) should be illegal for this command.

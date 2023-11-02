@@ -16,7 +16,7 @@ seq:
   - id: magic_0x47
     contents: [0x47]
     doc: a magic number (0x47)
-  - id: mac
+  - id: repeater_addr
     type: common::ble_addr
   - id: key
     type: common::name_map_key
@@ -28,16 +28,22 @@ seq:
     doc: |
       1 if the repeater is connected to a Bluetooth LE heart rate monitor,
       0 otherwise.
-  - id: hr_address
-    type: b6
+  - id: device
+    type: hr_device
     if: is_connected == true
-    doc: |
-      The Bluetooth LE address of the heart rate monitor.
-  - id: hr_name
-    # As this is a very common thing,
-    # there’s a shortcut for type: str and terminator: 0.
-    type: strz
-    if: is_connected == true
-    encoding: utf-8
-    doc: |
-      The name of the heart rate monitor.
+
+types:
+  hr_device:
+    seq:
+    - id: addr
+      type: b6
+      doc: |
+        The Bluetooth LE address of the heart rate monitor.
+    - id: name
+      # As this is a very common thing,
+      # there’s a shortcut for type: str and terminator: 0.
+      type: strz
+      encoding: utf-8
+      doc: |
+        The name of the heart rate monitor.
+
