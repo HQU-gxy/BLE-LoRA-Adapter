@@ -59,7 +59,11 @@ size_t marshal(t &data, uint8_t *buffer, size_t size) {
 //
 // https://caml.inria.fr/pub/docs/oreilly-book/html/book-ora132.html
 // However, namespace could be treated as a struct
+#if __cplusplus >= 202002L
 template <unmarshallable T>
+#else
+template <typename T>
+#endif
 etl::optional<t> unmarshal_helper(const uint8_t *buffer, size_t size) {
   auto res = T::unmarshal(buffer, size);
   if (res) {

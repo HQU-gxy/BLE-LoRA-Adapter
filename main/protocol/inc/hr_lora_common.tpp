@@ -18,6 +18,7 @@ constexpr auto broadcast_addr = std::array<uint8_t, BLE_ADDR_SIZE>{0xff, 0xff, 0
 using name_map_key_t          = uint8_t;
 using addr_t                  = std::array<uint8_t, BLE_ADDR_SIZE>;
 
+#if __cplusplus >= 202002L
 /**
  * @brief a concept to check if a type (use as a module/namespace) is marshallable
  * @tparam T a module type that has a actual member type `t` and a static function `marshal`
@@ -35,6 +36,7 @@ template <typename T>
 concept unmarshallable = requires(const uint8_t *buffer, size_t size) {
   { T::unmarshal(buffer, size) } -> std::convertible_to<etl::optional<typename T::t>>;
 };
+#endif
 }
 
 #endif // BLE_LORA_ADAPTER_HR_LORA_COMMON_H
