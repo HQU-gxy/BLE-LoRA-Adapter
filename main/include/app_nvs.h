@@ -7,6 +7,8 @@
 
 #include <etl/array.h>
 #include <nvs_handle.hpp>
+#include <nvs_flash.h>
+#include <esp_check.h>
 #include "heart_monitor.h"
 #include "common.h"
 
@@ -25,6 +27,12 @@ static constexpr auto ADDR_SIZE = blue::HeartMonitor::ADDR_SIZE;
 esp_err_t get_addr(addr_t *addr_ptr);
 
 esp_err_t set_addr(const addr_t &addr);
+
+/**
+ * @brief initialize nvs flash
+ * @return ESP_OK on success
+ */
+esp_err_t nvs_init();
 }
 
 #endif // BLE_LORA_ADAPTER_APP_NVS_H

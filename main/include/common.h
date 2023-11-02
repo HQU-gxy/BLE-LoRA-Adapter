@@ -5,6 +5,7 @@
 #ifndef BLE_LORA_ADAPTER_COMMON_H
 #define BLE_LORA_ADAPTER_COMMON_H
 
+#include <chrono>
 #include <driver/gpio.h>
 
 namespace common {

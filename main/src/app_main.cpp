@@ -3,7 +3,6 @@
 #include <esp_log.h>
 #include "scan_manager.h"
 #include "server_callback.h"
-#include "wlan_manager.h"
 #include "whitelist_char_callback.h"
 #include "esp_hal.h"
 #include "common.h"
