@@ -54,9 +54,6 @@ size_t marshal(t &data, uint8_t *buffer, size_t size) {
 }
 
 // https://stackoverflow.com/questions/55612759/alternative-to-using-namespace-as-template-parameter
-// https://en.cppreference.com/w/cpp/language/adl
-// you simply can't...
-//
 // https://caml.inria.fr/pub/docs/oreilly-book/html/book-ora132.html
 // However, namespace could be treated as a struct
 #if __cplusplus >= 202002L

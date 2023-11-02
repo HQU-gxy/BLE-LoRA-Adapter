@@ -8,6 +8,7 @@
 #include "esp_hal.h"
 #include "common.h"
 #include "hr_lora.h"
+#include "app_nvs.h"
 
 extern "C" void app_main();
 

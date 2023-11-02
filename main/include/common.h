@@ -31,6 +31,9 @@ constexpr auto SCAN_TIME                        = std::chrono::milliseconds(750)
 // scan time + sleep time
 constexpr auto SCAN_TOTAL_TIME = std::chrono::milliseconds(1000);
 static_assert(SCAN_TOTAL_TIME > SCAN_TIME);
+
+static constexpr auto PREF_PARTITION_LABEL = "st";
+static constexpr auto PREF_ADDR_BLOB_KEY   = "addr";
 }
 
 #endif // BLE_LORA_ADAPTER_COMMON_H

@@ -4,6 +4,7 @@ idf_component_register(SRCS
         src/wlan_manager.cpp
         src/esp_hal.cpp
         src/server_callback.cpp
+        src/app_nvs.cpp
 
         INCLUDE_DIRS
         include
