@@ -13,7 +13,7 @@ seq:
     contents: [0x63]
     doc: a magic number (0x63)
   - id: key
-    type: name_map_key
+    type: common::name_map_key
   - id: hr
     type: u1
     doc: |

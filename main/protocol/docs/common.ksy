@@ -3,6 +3,11 @@ meta:
   title: Common type definitions
   endian: be
 
+seq:
+  - id: ignore_me
+    type: strz
+    encoding: utf-8
+
 types:
   name_map_key:
     seq:

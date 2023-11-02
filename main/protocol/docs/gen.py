@@ -5,7 +5,7 @@ import subprocess
 
 pwd = Path(__file__).parent
 
-files = ["ack", "hit", "heartbeat", "params", "trace", "wrapper"]
+files = ["hr_data", "query_device_by_mac", "query_device_by_mac_r", "set_name_map_key", "common"]
 
 kaitai = shutil.which("kaitai-struct-compiler")
 dot = shutil.which("dot")

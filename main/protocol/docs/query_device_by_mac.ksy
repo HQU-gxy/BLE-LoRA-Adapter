@@ -1,6 +1,8 @@
 meta:
   id: query_device_by_mac
   title: Query by MAC
+  imports:
+    - common
   endian: be
 
 doc: |
@@ -14,8 +16,4 @@ seq:
     contents: [0x37]
     doc: a magic number
   - id: mac
-    size: 6
-    doc: |
-      The Bluetooth LE address of the device to be queried.
-      The all 1 address (FF:FF:FF:FF:FF:FF) is reserved for broadcast 
-      (i.e. query all devices).
+    type: common::ble_addr

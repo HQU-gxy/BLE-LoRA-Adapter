@@ -17,10 +17,8 @@ seq:
     contents: [0x79]
     doc: a magic number (0x79)
   - id: mac
-    type: ble_addr
+    type: common::ble_addr
     doc: |
-      The Bluetooth LE address of the repeater to be queried.
-      The all 1 address (FF:FF:FF:FF:FF:FF) is reserved for broadcast 
-      and should be illegal for this command.
+      The broadcast address (FF:FF:FF:FF:FF:FF) should be illegal for this command.
   - id: key
-    type: name_map_key
+    type: common::name_map_key

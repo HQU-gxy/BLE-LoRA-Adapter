@@ -17,13 +17,9 @@ seq:
     contents: [0x47]
     doc: a magic number (0x47)
   - id: mac
-    size: 6
-    doc: |
-      The Bluetooth LE address of the repeater to be queried.
-      The all 1 address (FF:FF:FF:FF:FF:FF) is reserved for broadcast 
-      (i.e. query all devices).
+    type: common::ble_addr
   - id: key
-    type: name_map_key
+    type: common::name_map_key
   - id: reserved
     type: b7
     doc: reserved
