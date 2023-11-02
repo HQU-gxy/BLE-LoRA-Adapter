@@ -8,14 +8,41 @@
 #include "common.h"
 #include "hr_lora.h"
 #include "app_nvs.h"
+#include <endian.h>
 
 extern "C" void app_main();
+
+bool RxFlag = false;
 
 void app_main() {
   using namespace common;
   using namespace blue;
   const auto TAG = "main";
   ESP_LOGI(TAG, "boot");
+
+  auto err = app_nvs::nvs_init();
+  ESP_ERROR_CHECK(err);
+  app_nvs::addr_t addr{0};
+  bool has_addr = false;
+  err           = app_nvs::get_addr(&addr);
+  if (err != ESP_OK) {
+    ESP_LOGE(TAG, "no device addr, fallback back to nullptr; reason %s (%d);", esp_err_to_name(err), err);
+  } else {
+    ESP_LOGI(TAG, "addr=%s", utils::toHex(addr.data(), addr.size()).c_str());
+    has_addr = true;
+  }
+
+  /**
+   * @brief a key that is used to map the name of the device to a number
+   */
+  auto *name_map_key = new uint8_t(0);
+  err                = app_nvs::get_name_map_key(name_map_key);
+  if (err != ESP_OK) {
+    ESP_LOGE(TAG, "no name map key, fallback back to 0; reason %s (%d);", esp_err_to_name(err), err);
+  } else {
+    ESP_LOGI(TAG, "name map key=%d", *name_map_key);
+  }
+
   auto &hal = *new ESPHal(pin::SCK, pin::MISO, pin::MOSI);
   hal.init();
   ESP_LOGI(TAG, "hal init success!");
@@ -29,7 +56,12 @@ void app_main() {
     vTaskDelay(1000 / portTICK_PERIOD_MS);
     esp_restart();
   }
-  ESP_LOGI(TAG, "RF init success!");
+  ESP_LOGI(TAG, "RF began!");
+  rf.setPacketReceivedAction([]() {
+    RxFlag = true;
+  });
+  rf.standby();
+  rf.startReceive();
 
   NimBLEDevice::init(BLE_NAME);
   auto &server    = *NimBLEDevice::createServer();
@@ -59,17 +91,101 @@ void app_main() {
     }
   };
 
-  scan_manager.on_data = [&rf, &hr_char](HeartMonitor &device, uint8_t *data, size_t size) {
-    ESP_LOGI("scan_manager", "data: %s", utils::toHex(data, size).c_str());
-    // I should encode it a bit
-    rf.transmit(data, size);
+  /**
+   * @brief should always allocate on heap when using `run_recv_task`
+   */
+  struct recv_task_param_t {
+    std::function<void(LLCC68 &)> task;
+    LLCC68 *rf;
+    TaskHandle_t handle;
+  };
+
+  auto recv_task = [&scan_manager, name_map_key](LLCC68 &rf) {
+    for (;;) {
+      if (RxFlag) {
+        RxFlag = false;
+        uint8_t data[255];
+        size_t size = rf.receive(data, sizeof(data));
+        if (size > 0) {
+          ESP_LOGI("recv", "recv=%s", utils::toHex(data, size).c_str());
+        }
+      } else {
+        taskYIELD();
+      }
+    }
+  };
+
+  /**
+   * a helper function to run a function on a new FreeRTOS task
+   */
+  auto run_recv_task = [](void *pvParameter) {
+    auto param = reinterpret_cast<recv_task_param_t *>(pvParameter);
+    [[unlikely]] if (param->task != nullptr && param->rf != nullptr) {
+      param->task(*param->rf);
+    } else {
+      ESP_LOGW("recv task", "bad precondition");
+    }
+    auto handle = param->handle;
+    delete param;
+    vTaskDelete(handle);
+  };
+  auto recv_param = new recv_task_param_t{recv_task, &rf, nullptr};
+
+  if (has_addr) {
+    scan_manager.set_target_addr(etl::make_optional(addr));
+  }
+
+  scan_manager.on_data = [&rf, &hr_char, name_map_key](HeartMonitor &device, uint8_t *data, size_t size) {
+    const auto TAG = "scan_manager";
+    ESP_LOGI(TAG, "data: %s", utils::toHex(data, size).c_str());
+    // https://community.home-assistant.io/t/ble-heartrate-monitor/300354/43
+    // 3.103 Heart Rate Measurement of GATT Specification Supplement
+    // first byte is a struct of some flags
+    // if bit 0 of the first byte is 0, it's uint8
+    if (size < 2) {
+      ESP_LOGW(TAG, "bad data size: %d", size);
+      return;
+    }
+    int hr;
+    if ((data[0] & 0b1) == 0) {
+      hr = data[1];
+      ESP_LOGI(TAG, "hr=%d", hr);
+    } else {
+      // if bit 0 of the first byte is 1, it's uint16 and it's little endian
+      hr = ::le16dec(data + 1);
+      ESP_LOGI(TAG, "hr=%d (uint16le)", hr);
+    }
+    if (hr > 255) {
+      ESP_LOGW(TAG, "hr overflow; cap to 255;");
+      hr = 255;
+    }
+    auto hr_data = HrLoRa::hr_data::t{
+        .key = *name_map_key,
+        .hr  = static_cast<uint8_t>(hr),
+    };
+    uint8_t buf[16];
+    auto sz = HrLoRa::hr_data::marshal(hr_data, buf, sizeof(buf));
+    if (sz == 0) {
+      ESP_LOGE(TAG, "failed to marshal hr_data");
+      return;
+    }
+    rf.standby();
+    // for LoRa we encode the data as `HrLoRa::hr_data`
+    auto err = rf.transmit(buf, sz);
+    if (err != RADIOLIB_ERR_NONE) {
+      ESP_LOGE(TAG, "failed to transmit, code %d", err);
+    }
+    // for Bluetooth LE character we just repeat the data
     hr_char.setValue(data, size);
     hr_char.notify();
+    rf.standby();
+    rf.startReceive();
   };
 
   server.start();
   scan_manager.start_scanning_task();
   NimBLEDevice::startAdvertising();
 
+  xTaskCreate(run_recv_task, "recv_task", 4096, recv_param, 1, &recv_param->handle);
   vTaskDelete(nullptr);
 }

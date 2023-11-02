@@ -97,13 +97,25 @@ private:
   };
 
 public:
+  /**
+   * @brief get a unique pointer to the target device, if exists
+   */
+  device_ptr_t get_device() {
+    if (device != nullptr) {
+      auto p = std::make_unique<HeartMonitor>(*device);
+      return p;
+    } else {
+      return nullptr;
+    }
+  }
+
   [[nodiscard]] etl::optional<white_list::Addr> get_target_addr() const {
     if (target_addr == nullptr) {
       return etl::nullopt;
     }
     return etl::make_optional(*target_addr);
   }
-  std::function<void(HeartMonitor &device, uint8_t * data, size_t size)> on_data = nullptr;
+  std::function<void(HeartMonitor &device, uint8_t *data, size_t size)> on_data = nullptr;
 
   /**
    * @brief set the target address to scan

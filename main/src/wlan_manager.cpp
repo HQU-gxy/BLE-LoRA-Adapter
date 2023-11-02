@@ -105,26 +105,26 @@ esp_err_t WlanManager::nvs_init() {
     ret = nvs_flash_init();
   }
   ESP_RETURN_ON_ERROR(ret, TAG, "Failed to init NVS");
-  _has_nvs_init = true;
   return ESP_OK;
 }
 
 esp_err_t WlanManager::wifi_init() { // NOLINT(*-make-member-function-const)
   auto TAG = "WlanManager::init";
   // Initialize NVS
-  if (!_has_nvs_init) {
-    ESP_RETURN_ON_ERROR(nvs_flash_init(), TAG, "Failed to init NVS");
+  auto err = nvs_flash_init();
+  if (err != ESP_OK) {
+    ESP_LOGW(TAG, "failed to init NVS (might have already been inited) %s (%d)", esp_err_to_name(err), err);
   }
   // https://github.com/espressif/esp-idf/blob/master/examples/wifi/scan/main/scan.c
-  ESP_RETURN_ON_ERROR(esp_netif_init(), TAG, "Failed to init netif");
-  ESP_RETURN_ON_ERROR(esp_event_loop_create_default(), TAG, "Failed to create event loop");
+  ESP_RETURN_ON_ERROR(esp_netif_init(), TAG, "failed to init netif");
+  ESP_RETURN_ON_ERROR(esp_event_loop_create_default(), TAG, "failed to create event loop");
   esp_netif_t *sta_netif = esp_netif_create_default_wifi_sta();
   assert(sta_netif);
   wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-  ESP_RETURN_ON_ERROR(esp_wifi_init(&cfg), TAG, "Failed to init wifi");
-  ESP_RETURN_ON_ERROR(esp_wifi_set_mode(WIFI_MODE_STA), TAG, "Failed to set wifi mode");
-  ESP_RETURN_ON_ERROR(esp_wifi_start(), TAG, "Failed to start wifi");
-  ESP_RETURN_ON_ERROR(_register_wifi_handlers(), TAG, "Failed to register wifi handlers");
+  ESP_RETURN_ON_ERROR(esp_wifi_init(&cfg), TAG, "failed to init wifi");
+  ESP_RETURN_ON_ERROR(esp_wifi_set_mode(WIFI_MODE_STA), TAG, "failed to set wifi mode");
+  ESP_RETURN_ON_ERROR(esp_wifi_start(), TAG, "failed to start wifi");
+  ESP_RETURN_ON_ERROR(_register_wifi_handlers(), TAG, "failed to register wifi handlers");
   return ESP_OK;
 }
 
@@ -275,7 +275,7 @@ void WlanManager::connect_task(void *pvParameters) {
         ESP_LOGE(TAG, "failed to connect to ap, reason %s (%d)", esp_err_to_name(err), err);
       }
     } else {
-       ESP_LOGW(TAG, "no ap to connect");
+      ESP_LOGW(TAG, "no ap to connect");
     }
     vTaskDelay(pdMS_TO_TICKS(1000));
   }

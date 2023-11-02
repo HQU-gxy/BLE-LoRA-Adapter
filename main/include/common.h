@@ -34,6 +34,7 @@ constexpr auto SCAN_TOTAL_TIME = std::chrono::milliseconds(1000);
 static_assert(SCAN_TOTAL_TIME > SCAN_TIME);
 
 static constexpr auto PREF_PARTITION_LABEL = "st";
+static constexpr auto PREF_NAME_MAP_KEY_WORD8_KEY = "nmk";
 static constexpr auto PREF_ADDR_BLOB_KEY   = "addr";
 }
 

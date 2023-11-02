@@ -31,7 +31,7 @@ class WlanManager {
    * and it will keep true even if the connection is lost for a while
    */
   bool _has_ip       = false;
-  bool _has_nvs_init = false;
+
   /**
    * @sa https://github.com/espressif/esp-idf/blob/8fc8f3f47997aadba21facabc66004c1d22de181/examples/protocols/mqtt/tcp/main/app_main.c
    * @sa https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/protocols/mqtt.html
@@ -81,7 +81,7 @@ public:
    * @sideeffect set `_has_nvs_init` to true
    * @return ESP_OK on success
    */
-  esp_err_t nvs_init();
+  static esp_err_t nvs_init();
 
   /**
    * @brief initialize wlan (and nvs flash if not initialized)
@@ -107,7 +107,6 @@ public:
   esp_err_t connect();
 
   esp_err_t publish(const MqttPubMsg &msg);
-  ;
 };
 
 struct WifiScanTaskParam {
