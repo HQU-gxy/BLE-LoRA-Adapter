@@ -68,11 +68,9 @@ etl::optional<t> unmarshal(const uint8_t *buffer, size_t size) {
   switch (magic) {
     case hr_data::magic: {
       auto res = hr_data::unmarshal(buffer, size);
-      if (res) {
-        return t{res.value()};
-      } else {
-        return etl::nullopt;
-      }
+      // cursed IIFE
+      // the reason why we need this is `etl::make_optional` only accepts lvalue
+      return res ? [&]() { auto temp = t{res.value()}; return etl::make_optional(temp); }() : etl::nullopt;
     }
     case query_device_by_mac::magic: {
       auto res = query_device_by_mac::unmarshal(buffer, size);
