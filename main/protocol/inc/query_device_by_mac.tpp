@@ -12,6 +12,7 @@
 namespace HrLoRa {
 struct query_device_by_mac {
   struct t {
+    using module = query_device_by_mac;
     addr_t addr{};
   };
   static consteval size_t size_needed() {
@@ -48,6 +49,7 @@ struct query_device_by_mac {
 
 struct hr_device {
   struct t {
+    using module = hr_device;
     addr_t addr{};
     // zero terminated string
     std::string name{};
@@ -89,6 +91,7 @@ struct hr_device {
 struct query_device_by_mac_response {
   static constexpr uint8_t magic = 0x47;
   struct t {
+    using module = query_device_by_mac_response;
     addr_t repeater_addr{};
     name_map_key_t key                 = 0;
     etl::optional<hr_device::t> device = etl::nullopt;

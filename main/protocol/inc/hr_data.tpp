@@ -12,14 +12,15 @@ namespace HrLoRa {
 struct hr_data {
   static constexpr uint8_t magic = 0x63;
   struct t {
-    uint8_t key = 0;
-    uint8_t hr  = 0;
+    using module = hr_data;
+    uint8_t key  = 0;
+    uint8_t hr   = 0;
   };
   static consteval size_t size_needed() {
     // key + hr + magic
     return sizeof(magic) + sizeof(t::key) + sizeof(t::hr);
   }
-  static size_t marshal(t &data, uint8_t *buffer, size_t buffer_size) {
+  static size_t marshal(const t &data, uint8_t *buffer, size_t buffer_size) {
     if (buffer_size < size_needed()) {
       return 0;
     }

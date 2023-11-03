@@ -13,6 +13,7 @@ namespace HrLoRa {
 struct set_name_map_key {
   static constexpr uint8_t magic = 0x79;
   struct t {
+    using module = set_name_map_key;
     addr_t addr{};
     name_map_key_t key = 0;
   };
