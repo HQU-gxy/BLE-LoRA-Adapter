@@ -67,6 +67,13 @@ public:
   using device_ptr_t = std::unique_ptr<HeartMonitor>;
   using addr_ptr_t   = std::unique_ptr<white_list::Addr>;
 
+  /**
+   * @brief callback when we have scan result
+   * @param device name
+   * @param 6 bytes (48 bits) of mac address
+   */
+  std::function<void(std::string, const uint8_t *)> onResultCb = nullptr;
+
 private:
   static constexpr auto TAG = "ScanManager";
   addr_ptr_t target_addr    = nullptr;
@@ -177,7 +184,9 @@ public:
   void onResult(NimBLEAdvertisedDevice *advertisedDevice) override {
     const auto TAG = "ScanCallback::onResult";
     auto name      = advertisedDevice->getName();
-
+    if (onResultCb != nullptr) {
+      onResultCb(advertisedDevice->getName(), advertisedDevice->getAddress().getNative());
+    }
     if (!name.empty()) {
       ESP_LOGI(TAG, "name=%s; addr=%s; rssi=%d", name.c_str(),
                advertisedDevice->getAddress().toString().c_str(),
@@ -223,6 +232,7 @@ public:
       auto &client = *pClient;
       if (!client.isConnected()) {
         auto ok = client.connect();
+        ESP_LOGI(TAG, "connected to %s", name.c_str());
         if (!ok) {
           ESP_LOGE(TAG, "Failed to connect to %s", name.c_str());
           return;

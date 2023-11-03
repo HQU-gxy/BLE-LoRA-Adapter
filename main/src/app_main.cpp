@@ -10,6 +10,7 @@
 #include "app_nvs.h"
 #include <endian.h>
 #include <freertos/event_groups.h>
+#include <cstring>
 
 extern "C" void app_main();
 
@@ -176,11 +177,13 @@ void app_main() {
   auto &scan_manager = *new ScanManager();
   auto &hr_service   = *server.createService(BLE_CHAR_HR_SERVICE_UUID);
   // repeat the data from the connected device
-  auto &hr_char    = *hr_service.createCharacteristic(BLE_CHAR_HR_CHAR_UUID,
-                                                      NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY);
-  auto &white_char = *hr_service.createCharacteristic(BLE_CHAR_WHITE_LIST_UUID,
-                                                      NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::NOTIFY);
-  auto &white_cb   = *new WhiteListCallback();
+  auto &hr_char     = *hr_service.createCharacteristic(BLE_CHAR_HR_CHAR_UUID,
+                                                       NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY);
+  auto &white_char  = *hr_service.createCharacteristic(BLE_CHAR_WHITE_LIST_UUID,
+                                                       NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::NOTIFY);
+  auto &device_char = *hr_service.createCharacteristic(BLE_CHAR_DEVICE_UUID,
+                                                       NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY);
+  auto &white_cb    = *new WhiteListCallback();
   white_char.setCallbacks(&white_cb);
   white_cb.on_request_address = [&scan_manager]() {
     return scan_manager.get_target_addr();
@@ -239,6 +242,35 @@ void app_main() {
   if (has_addr) {
     scan_manager.set_target_addr(etl::make_optional(addr));
   }
+
+  scan_manager.onResultCb = [&device_char](std::string device_name, const uint8_t *addr) {
+    uint8_t buf[32]                 = {0};
+    auto TAG                        = "onResultCb";
+    auto ostream                    = pb_ostream_from_buffer(buf, sizeof(buf));
+    ::bluetooth_device_pb device_pb = bluetooth_device_pb_init_zero;
+    device_pb.mac.funcs.encode      = [](pb_ostream_t *stream, const pb_field_t *field, void *const *arg) {
+      const auto addr_ptr = reinterpret_cast<const uint8_t *>(*arg);
+      if (!pb_encode_tag_for_field(stream, field)) {
+        return false;
+      }
+      return pb_encode_string(stream, addr_ptr, white_list::BLE_MAC_ADDR_SIZE);
+    };
+    device_pb.mac.arg           = const_cast<uint8_t *>(addr);
+    const auto target_name_size = sizeof(device_pb.name) - 1;
+    if (device_name.size() > target_name_size) {
+      device_name.resize(target_name_size);
+      ESP_LOGW(TAG, "Truncated device name to %s", device_name.c_str());
+    }
+    std::memcpy(device_pb.name, device_name.c_str(), device_name.size());
+    auto ok = pb_encode(&ostream, bluetooth_device_pb_fields, &device_pb);
+    if (!ok) {
+      ESP_LOGE(TAG, "Failed to encode the device");
+      return;
+    }
+    auto sz = ostream.bytes_written;
+    device_char.setValue(buf, sz);
+    device_char.notify();
+  };
 
   scan_manager.on_data = [&rf, &hr_char, name_map_key](HeartMonitor &device, uint8_t *data, size_t size) {
     const auto TAG = "scan_manager";

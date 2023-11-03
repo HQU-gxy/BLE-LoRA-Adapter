@@ -23,6 +23,7 @@ namespace pin {
 }
 
 static const char *BLE_CHAR_WHITE_LIST_UUID = "12a481f0-9384-413d-b002-f8660566d3b0";
+static const char *BLE_CHAR_DEVICE_UUID     = "a2f05114-fdb6-4549-ae2a-845b4be1ac48";
 static const char *BLE_STANDARD_HR_SERVICE_UUID = "180d";
 static const char *BLE_STANDARD_HR_CHAR_UUID    = "2a37";
 static const char *BLE_CHAR_HR_SERVICE_UUID     = BLE_STANDARD_HR_SERVICE_UUID;
