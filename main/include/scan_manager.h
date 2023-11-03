@@ -15,6 +15,7 @@
 #include "whitelist.h"
 #include "utils.h"
 #include "common.h"
+#include "app_nvs.h"
 
 namespace blue {
 const int MAX_DEVICE_NUM  = 12;
@@ -219,7 +220,10 @@ public:
         pClient = self.device->client;
         assert(pClient != nullptr);
       } else {
-        pClient              = NimBLEDevice::getClientByPeerAddress(nimble_address);
+        pClient              = NimBLEDevice::createClient(nimble_address);
+        if (pClient == nullptr) {
+          ESP_LOGE(TAG, "bad client");
+        }
         auto pClientCallback = new ClientCallback{&self};
         auto dev             = HeartMonitor{
                         .name      = name,
@@ -227,6 +231,7 @@ public:
                         .client    = pClient,
                         .callbacks = pClientCallback,
         };
+        pClient->setClientCallbacks(pClientCallback);
         self.device = std::make_unique<HeartMonitor>(std::move(dev));
       }
       auto &client = *pClient;
@@ -269,6 +274,7 @@ public:
         client.disconnect();
         return;
       }
+      app_nvs::set_addr(addr);
       self.stop_scanning_task();
     };
     auto param = new ConnectTaskParam{

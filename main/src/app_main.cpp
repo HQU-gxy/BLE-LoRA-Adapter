@@ -71,7 +71,6 @@ void handleMessage(uint8_t *data, size_t size, LLCC68 &rf, blue::ScanManager &sc
         ESP_LOGE(TAG, "failed to marshal query_device_by_mac_response");
         break;
       }
-      rf.standby();
       auto err = rf.transmit(buf, sz);
       if (err != RADIOLIB_ERR_NONE) {
         ESP_LOGE(TAG, "failed to transmit, code %d", err);
@@ -79,6 +78,7 @@ void handleMessage(uint8_t *data, size_t size, LLCC68 &rf, blue::ScanManager &sc
         ESP_LOGI(TAG, "tx=%s (%d)", utils::toHex(buf, sz).c_str(), sz);
       }
       rf.startReceive();
+      break;
     }
     case HrLoRa::set_name_map_key::magic: {
       auto r = HrLoRa::set_name_map_key::unmarshal(data, size);
@@ -199,6 +199,13 @@ void app_main() {
     }
   };
 
+  // the server should be started before scanning and advertising
+  // put the delay to make sure of it
+  hr_service.start();
+  server.start();
+  NimBLEDevice::startAdvertising();
+  vTaskDelay(1000 / portTICK_PERIOD_MS);
+
   /**
    * @brief should always allocate on heap when using `run_recv_task`
    */
@@ -309,7 +316,11 @@ void app_main() {
     rf.standby();
     // for LoRa we encode the data as `HrLoRa::hr_data`
     auto err = rf.transmit(buf, sz);
-    if (err != RADIOLIB_ERR_NONE) {
+    if (err == RADIOLIB_ERR_NONE) {
+      // ok
+    } else if (err == RADIOLIB_ERR_TX_TIMEOUT) {
+      ESP_LOGW(TAG, "tx timeout; check the busy pin.");
+    } else {
       ESP_LOGE(TAG, "failed to transmit, code %d", err);
     }
     // for Bluetooth LE character we just repeat the data
@@ -318,10 +329,6 @@ void app_main() {
     rf.standby();
     rf.startReceive();
   };
-
-  hr_service.start();
-  server.start();
-  NimBLEDevice::startAdvertising();
 
   scan_manager.start_scanning_task();
   xTaskCreate(run_recv_task, "recv_task", 4096, recv_param, 0, &recv_param->handle);
