@@ -17,14 +17,6 @@ extern "C" void app_main();
 const auto RecvEvt = BIT0;
 
 /**
- * used in `rf.setPacketReceivedAction`
- * a workaround to pass an argument to ISR.
- * Actually ESP IDF has a API to pass an argument to ISR (`gpio_isr_handler_add`),
- * but RadioLib doesn't use it and I don't want to break the API (though I can).
- */
-void *rf_recv_interrupt_data_ptr = nullptr;
-
-/**
  * @brief try to transmit the data
  * @note would block until the transmission is done and will start receiving after that
  */
@@ -170,14 +162,19 @@ void app_main() {
   struct rf_recv_interrupt_data_t {
     EventGroupHandle_t evt_grp;
   };
-  auto evt_grp                       = xEventGroupCreate();
+  auto evt_grp = xEventGroupCreate();
+
+  /**
+   * used in `rf.setPacketReceivedAction`
+   * a workaround to pass an argument to ISR.
+   * Actually ESP IDF has a API to pass an argument to ISR (`gpio_isr_handler_add`),
+   * but RadioLib doesn't use it and I don't want to break the API (though I can).
+   */
   static auto rf_recv_interrupt_data = rf_recv_interrupt_data_t{evt_grp};
-  rf_recv_interrupt_data_ptr         = &rf_recv_interrupt_data;
   rf.setPacketReceivedAction([]() {
-    auto param_ptr = static_cast<rf_recv_interrupt_data_t *>(rf_recv_interrupt_data_ptr);
     // https://www.freertos.org/xEventGroupSetBitsFromISR.html
     BaseType_t task_woken = pdFALSE;
-    auto xResult          = xEventGroupSetBitsFromISR(param_ptr->evt_grp, RecvEvt, &task_woken);
+    auto xResult          = xEventGroupSetBitsFromISR(rf_recv_interrupt_data.evt_grp, RecvEvt, &task_woken);
     if (xResult != pdFAIL) {
       portYIELD_FROM_ISR(task_woken);
     }
