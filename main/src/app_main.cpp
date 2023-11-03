@@ -13,11 +13,16 @@
 
 extern "C" void app_main();
 
+
+const auto RecvEvt           = BIT0;
+
 /**
  * used in `rf.setPacketReceivedAction`
+ * a workaround to pass an argument to ISR.
+ * Actually ESP IDF has a API to pass an argument to ISR (`gpio_isr_handler_add`),
+ * but RadioLib doesn't use it and I don't want to break the API (though I can).
  */
 void *rf_recv_interrupt_data = nullptr;
-const auto RecvEvt           = BIT0;
 
 /**
  * @brief handle the message received from LoRa
@@ -151,7 +156,12 @@ void app_main() {
     if (param_ptr == nullptr) {
       return;
     }
-    xEventGroupSetBits(param_ptr->evt_grp, RecvEvt);
+    // https://www.freertos.org/xEventGroupSetBitsFromISR.html
+    BaseType_t task_woken = pdFALSE;
+    auto xResult          = xEventGroupSetBitsFromISR(param_ptr->evt_grp, RecvEvt, &task_woken);
+    if (xResult != pdFAIL) {
+      portYIELD_FROM_ISR(task_woken);
+    }
   });
   rf_recv_interrupt_data = new rf_recv_interrupt_data_t{evt_grp};
 
@@ -199,7 +209,7 @@ void app_main() {
   auto recv_task = [&scan_manager, name_map_key, evt_grp](LLCC68 &rf) {
     const auto TAG = "recv";
     for (;;) {
-      xEventGroupWaitBits(evt_grp, RecvEvt, true, false, portMAX_DELAY);
+      xEventGroupWaitBits(evt_grp, RecvEvt, pdTRUE, pdFALSE, portMAX_DELAY);
       uint8_t data[255];
       size_t size = rf.receive(data, sizeof(data));
       if (size == 0) {

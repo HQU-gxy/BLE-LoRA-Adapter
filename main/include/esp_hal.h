@@ -120,7 +120,7 @@ public:
     return (gpio_get_level((gpio_num_t)pin));
   }
 
-  void attachInterrupt(uint32_t interruptNum, void (*interruptCb)(void), uint32_t mode) override {
+  void attachInterrupt(uint32_t interruptNum, void (*interruptCb)(), uint32_t mode) override {
     if (interruptNum == RADIOLIB_NC) {
       return;
     }
@@ -130,7 +130,7 @@ public:
 
     // this uses function typecasting, which is not defined when the functions have different signatures
     // untested and might not work
-    gpio_isr_handler_add((gpio_num_t)interruptNum, (void (*)(void *))interruptCb, NULL);
+    gpio_isr_handler_add((gpio_num_t)interruptNum, (void (*)(void *))interruptCb, nullptr);
   }
 
   void detachInterrupt(uint32_t interruptNum) override {
@@ -189,7 +189,7 @@ public:
   }
 
   void spiBegin() override {
-    constexpr auto TAG = "ESPHal::spiBegin";
+    constexpr auto TAG       = "ESPHal::spiBegin";
     spi_bus_config_t bus_cfg = {
         .mosi_io_num     = this->spiMOSI,
         .miso_io_num     = this->spiMISO,
@@ -201,7 +201,7 @@ public:
 
     // it might be initialized already
     auto ret = spi_bus_initialize(SPI_HOST, &bus_cfg, SPI_DMA_CH_AUTO);
-    if (ret != ESP_OK){
+    if (ret != ESP_OK) {
       ESP_LOGW("spi_bus_initialize", "%s (%d)", esp_err_to_name(ret), ret);
     }
 
@@ -211,8 +211,7 @@ public:
         .mode           = 0,
         .clock_speed_hz = 2000000,
         .spics_io_num   = -1, // trigger CS manually
-        .queue_size = 7
-    };
+        .queue_size     = 7};
     ret = spi_bus_add_device(SPI_HOST, &dev_cfg, &spi);
     ESP_ERROR_CHECK(ret);
   }
