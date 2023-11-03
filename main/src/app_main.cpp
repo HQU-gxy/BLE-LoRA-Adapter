@@ -152,6 +152,7 @@ void app_main() {
     EventGroupHandle_t evt_grp;
   };
   auto evt_grp = xEventGroupCreate();
+  rf_recv_interrupt_data = new rf_recv_interrupt_data_t{evt_grp};
   rf.setPacketReceivedAction([]() {
     auto param_ptr = static_cast<rf_recv_interrupt_data_t *>(rf_recv_interrupt_data);
     if (param_ptr == nullptr) {
@@ -164,7 +165,6 @@ void app_main() {
       portYIELD_FROM_ISR(task_woken);
     }
   });
-  rf_recv_interrupt_data = new rf_recv_interrupt_data_t{evt_grp};
 
   rf.standby();
   rf.startReceive();
@@ -198,13 +198,6 @@ void app_main() {
       scan_manager.set_target_addr(etl::nullopt);
     }
   };
-
-  // the server should be started before scanning and advertising
-  // put the delay to make sure of it
-  hr_service.start();
-  server.start();
-  NimBLEDevice::startAdvertising();
-  vTaskDelay(1000 / portTICK_PERIOD_MS);
 
   /**
    * @brief should always allocate on heap when using `run_recv_task`
@@ -246,13 +239,9 @@ void app_main() {
   };
   auto recv_param = new recv_task_param_t{recv_task, &rf, nullptr, evt_grp};
 
-  if (has_addr) {
-    scan_manager.set_target_addr(etl::make_optional(addr));
-  }
-
-  scan_manager.onResultCb = [&device_char](std::string device_name, const uint8_t *addr) {
+  scan_manager.on_result = [&device_char](std::string device_name, const uint8_t *addr) {
     uint8_t buf[32]                 = {0};
-    auto TAG                        = "onResultCb";
+    auto TAG                        = "on_result";
     auto ostream                    = pb_ostream_from_buffer(buf, sizeof(buf));
     ::bluetooth_device_pb device_pb = bluetooth_device_pb_init_zero;
     device_pb.mac.funcs.encode      = [](pb_ostream_t *stream, const pb_field_t *field, void *const *arg) {
@@ -319,7 +308,7 @@ void app_main() {
     if (err == RADIOLIB_ERR_NONE) {
       // ok
     } else if (err == RADIOLIB_ERR_TX_TIMEOUT) {
-      ESP_LOGW(TAG, "tx timeout; check the busy pin.");
+      ESP_LOGW(TAG, "tx timeout; please check the busy pin;");
     } else {
       ESP_LOGE(TAG, "failed to transmit, code %d", err);
     }
@@ -329,6 +318,17 @@ void app_main() {
     rf.standby();
     rf.startReceive();
   };
+
+  /**
+   * the server should be started before scanning and advertising
+   */
+  hr_service.start();
+  server.start();
+  NimBLEDevice::startAdvertising();
+
+  if (has_addr) {
+    scan_manager.set_target_addr(etl::make_optional(addr));
+  }
 
   scan_manager.start_scanning_task();
   xTaskCreate(run_recv_task, "recv_task", 4096, recv_param, 0, &recv_param->handle);

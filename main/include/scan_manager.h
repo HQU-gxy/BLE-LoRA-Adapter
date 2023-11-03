@@ -73,7 +73,7 @@ public:
    * @param device name
    * @param 6 bytes (48 bits) of mac address
    */
-  std::function<void(std::string, const uint8_t *)> onResultCb = nullptr;
+  std::function<void(std::string, const uint8_t *)> on_result = nullptr;
 
 private:
   static constexpr auto TAG = "ScanManager";
@@ -182,11 +182,12 @@ public:
     return true;
   }
 
+private:
   void onResult(NimBLEAdvertisedDevice *advertisedDevice) override {
     const auto TAG = "ScanCallback::onResult";
     auto name      = advertisedDevice->getName();
-    if (onResultCb != nullptr) {
-      onResultCb(advertisedDevice->getName(), advertisedDevice->getAddress().getNative());
+    if (on_result != nullptr) {
+      on_result(advertisedDevice->getName(), advertisedDevice->getAddress().getNative());
     }
     if (!name.empty()) {
       ESP_LOGI(TAG, "name=%s; addr=%s; rssi=%d", name.c_str(),
@@ -220,7 +221,7 @@ public:
         pClient = self.device->client;
         assert(pClient != nullptr);
       } else {
-        pClient              = NimBLEDevice::createClient(nimble_address);
+        pClient = NimBLEDevice::createClient(nimble_address);
         if (pClient == nullptr) {
           ESP_LOGE(TAG, "bad client");
         }
@@ -297,7 +298,6 @@ public:
                 param, 5, &param->task_handle);
   };
 
-private:
   /**
    * @brief stop the scanning task
    * @note should be called when the device is connected successfully.
