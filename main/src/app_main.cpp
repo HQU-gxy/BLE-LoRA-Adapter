@@ -13,8 +13,7 @@
 
 extern "C" void app_main();
 
-
-const auto RecvEvt           = BIT0;
+const auto RecvEvt = BIT0;
 
 /**
  * used in `rf.setPacketReceivedAction`
@@ -83,12 +82,13 @@ void handleMessage(uint8_t *data, size_t size, LLCC68 &rf, blue::ScanManager &sc
     case HrLoRa::set_name_map_key::magic: {
       auto r = HrLoRa::set_name_map_key::unmarshal(data, size);
       if (!r) {
-        ESP_LOGE("recv", "failed to unmarshal set_name_map_key");
+        ESP_LOGE(TAG, "failed to unmarshal set_name_map_key");
         break;
       }
       auto &req     = r.value();
       *name_map_key = req.key;
       app_nvs::set_name_map_key(req.key);
+      ESP_LOGI(TAG, "set name map key to %d", req.key);
       break;
     }
     case HrLoRa::hr_data::magic:
@@ -152,7 +152,7 @@ void app_main() {
   };
   auto evt_grp = xEventGroupCreate();
   rf.setPacketReceivedAction([]() {
-    auto param_ptr = reinterpret_cast<rf_recv_interrupt_data_t *>(rf_recv_interrupt_data);
+    auto param_ptr = static_cast<rf_recv_interrupt_data_t *>(rf_recv_interrupt_data);
     if (param_ptr == nullptr) {
       return;
     }
