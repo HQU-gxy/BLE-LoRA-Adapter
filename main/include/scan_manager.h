@@ -108,12 +108,11 @@ public:
   /**
    * @brief get a unique pointer to the target device, if exists
    */
-  device_ptr_t get_device() {
+  etl::optional<HeartMonitor> get_device() {
     if (device != nullptr) {
-      auto p = std::make_unique<HeartMonitor>(*device);
-      return p;
+      return etl::make_optional(*device);
     } else {
-      return nullptr;
+      return etl::nullopt;
     }
   }
 

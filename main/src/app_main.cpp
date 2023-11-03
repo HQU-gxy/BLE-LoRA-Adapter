@@ -35,23 +35,29 @@ void tryTransmit(uint8_t *data, size_t size, LLCC68 &rf) {
 }
 
 struct handle_message_callbacks_t {
-  std::function<void(uint8_t *data, size_t size)> send            = nullptr;
-  std::function<std::unique_ptr<blue::HeartMonitor>()> get_device = nullptr;
-  std::function<void(HrLoRa::name_map_key_t)> set_name_map_key    = nullptr;
-  std::function<HrLoRa::name_map_key_t()> get_name_map_key        = nullptr;
+  std::function<void(uint8_t *data, size_t size)> send          = nullptr;
+  std::function<etl::optional<blue::HeartMonitor>()> get_device = nullptr;
+  std::function<void(HrLoRa::name_map_key_t)> set_name_map_key  = nullptr;
+  std::function<HrLoRa::name_map_key_t()> get_name_map_key      = nullptr;
 };
 
 /**
  * @brief handle the message received from LoRa
  * @param data the data received
  * @param size the size of the data
- * @param rf   the LoRa module
- * @param scan_manager
- * @param name_map_key a pointer to the key that is used to map the name of the device to a number
+ * @param callbacks the callbacks to handle the message. This function would do nothing if any of the callback is empty.
  */
 void handle_message(uint8_t *data, size_t size, const handle_message_callbacks_t &callbacks) {
-  const auto TAG = "recv";
-  auto magic     = data[0];
+  const auto TAG   = "recv";
+  bool is_cb_empty = callbacks.send == nullptr ||
+                     callbacks.get_device == nullptr ||
+                     callbacks.set_name_map_key == nullptr ||
+                     callbacks.get_name_map_key == nullptr;
+  if (is_cb_empty) {
+    ESP_LOGE(TAG, "at least one callback is empty");
+    return;
+  }
+  auto magic = data[0];
   switch (magic) {
     case HrLoRa::query_device_by_mac::magic: {
       auto r = HrLoRa::query_device_by_mac::unmarshal(data, size);
