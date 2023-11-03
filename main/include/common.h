@@ -28,9 +28,9 @@ static const char *BLE_STANDARD_HR_CHAR_UUID    = "2a37";
 static const char *BLE_CHAR_HR_SERVICE_UUID     = BLE_STANDARD_HR_SERVICE_UUID;
 static const char *BLE_CHAR_HR_CHAR_UUID        = BLE_STANDARD_HR_CHAR_UUID;
 constexpr auto BLE_NAME                         = "LoRA-Adapter";
-constexpr auto SCAN_TIME                        = std::chrono::milliseconds(750);
+constexpr auto SCAN_TIME                        = std::chrono::milliseconds(2500);
 // scan time + sleep time
-constexpr auto SCAN_TOTAL_TIME = std::chrono::milliseconds(1000);
+constexpr auto SCAN_TOTAL_TIME = std::chrono::milliseconds(5000);
 static_assert(SCAN_TOTAL_TIME > SCAN_TIME);
 
 static constexpr auto PREF_PARTITION_LABEL = "st";

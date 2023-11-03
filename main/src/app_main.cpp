@@ -9,10 +9,93 @@
 #include "hr_lora.h"
 #include "app_nvs.h"
 #include <endian.h>
+#include <freertos/event_groups.h>
 
 extern "C" void app_main();
 
-bool RxFlag = false;
+/**
+ * used in `rf.setPacketReceivedAction`
+ */
+void *rf_recv_interrupt_data = nullptr;
+const auto RecvEvt           = BIT0;
+
+/**
+ * @brief handle the message received from LoRa
+ * @param data the data received
+ * @param size the size of the data
+ * @param rf   the LoRa module
+ * @param scan_manager
+ * @param name_map_key a pointer to the key that is used to map the name of the device to a number
+ * @todo refactor this function to use callback instead of passing the dependencies directly
+ */
+void handleMessage(uint8_t *data, size_t size, LLCC68 &rf, blue::ScanManager &scan_manager, uint8_t *name_map_key) {
+  const auto TAG = "recv";
+  auto magic     = data[0];
+  switch (magic) {
+    case HrLoRa::query_device_by_mac::magic: {
+      auto r = HrLoRa::query_device_by_mac::unmarshal(data, size);
+      if (!r) {
+        ESP_LOGE(TAG, "failed to unmarshal query_device_by_mac");
+        break;
+      }
+      auto &req           = r.value();
+      auto my_addr        = NimBLEDevice::getAddress();
+      auto my_addr_native = my_addr.getNative();
+      bool is_broadcast   = std::equal(req.addr.begin(), req.addr.end(), HrLoRa::broadcast_addr.data());
+      bool eq             = is_broadcast || std::equal(req.addr.begin(), req.addr.end(), my_addr_native);
+      if (!eq) {
+        ESP_LOGI(TAG, "%s is not for me", utils::toHex(req.addr.data(), req.addr.size()).c_str());
+        break;
+      }
+      auto resp = HrLoRa::query_device_by_mac_response::t{
+          .repeater_addr = HrLoRa::addr_t{},
+          .key           = *name_map_key,
+      };
+      std::copy(my_addr_native, my_addr_native + HrLoRa::BLE_ADDR_SIZE, resp.repeater_addr.data());
+      auto device = scan_manager.get_device();
+      if (device) {
+        auto dev = HrLoRa::hr_device::t{};
+        std::copy(device->addr.begin(), device->addr.end(), dev.addr.data());
+        dev.name = device->name;
+      } else {
+        resp.device = etl::nullopt;
+      }
+      uint8_t buf[64];
+      auto sz = HrLoRa::query_device_by_mac_response::marshal(resp, buf, sizeof(buf));
+      if (sz == 0) {
+        ESP_LOGE(TAG, "failed to marshal query_device_by_mac_response");
+        break;
+      }
+      rf.standby();
+      auto err = rf.transmit(buf, sz);
+      if (err != RADIOLIB_ERR_NONE) {
+        ESP_LOGE(TAG, "failed to transmit, code %d", err);
+      } else {
+        ESP_LOGI(TAG, "tx=%s (%d)", utils::toHex(buf, sz).c_str(), sz);
+      }
+      rf.startReceive();
+    }
+    case HrLoRa::set_name_map_key::magic: {
+      auto r = HrLoRa::set_name_map_key::unmarshal(data, size);
+      if (!r) {
+        ESP_LOGE("recv", "failed to unmarshal set_name_map_key");
+        break;
+      }
+      auto &req     = r.value();
+      *name_map_key = req.key;
+      app_nvs::set_name_map_key(req.key);
+      break;
+    }
+    case HrLoRa::hr_data::magic:
+    case HrLoRa::query_device_by_mac_response::magic: {
+      // from other repeater. do nothing.
+      return;
+    }
+    default: {
+      ESP_LOGW("recv", "unknown magic: %d", magic);
+    }
+  }
+}
 
 void app_main() {
   using namespace common;
@@ -57,9 +140,21 @@ void app_main() {
     esp_restart();
   }
   ESP_LOGI(TAG, "RF began!");
+
+  /** Radio receive interruption */
+  struct rf_recv_interrupt_data_t {
+    EventGroupHandle_t evt_grp;
+  };
+  auto evt_grp = xEventGroupCreate();
   rf.setPacketReceivedAction([]() {
-    RxFlag = true;
+    auto param_ptr = reinterpret_cast<rf_recv_interrupt_data_t *>(rf_recv_interrupt_data);
+    if (param_ptr == nullptr) {
+      return;
+    }
+    xEventGroupSetBits(param_ptr->evt_grp, RecvEvt);
   });
+  rf_recv_interrupt_data = new rf_recv_interrupt_data_t{evt_grp};
+
   rf.standby();
   rf.startReceive();
 
@@ -98,85 +193,20 @@ void app_main() {
     std::function<void(LLCC68 &)> task;
     LLCC68 *rf;
     TaskHandle_t handle;
+    EventGroupHandle_t evt_grp;
   };
 
-  auto recv_task = [&scan_manager, name_map_key](LLCC68 &rf) {
+  auto recv_task = [&scan_manager, name_map_key, evt_grp](LLCC68 &rf) {
     const auto TAG = "recv";
     for (;;) {
-      if (RxFlag) {
-        RxFlag = false;
-        uint8_t data[255];
-        size_t size = rf.receive(data, sizeof(data));
-        if (size > 0) {
-          ESP_LOGI(TAG, "recv=%s", utils::toHex(data, size).c_str());
-          auto magic = data[0];
-          switch (magic) {
-            case HrLoRa::query_device_by_mac::magic: {
-              auto r = HrLoRa::query_device_by_mac::unmarshal(data, size);
-              if (!r) {
-                ESP_LOGE(TAG, "failed to unmarshal query_device_by_mac");
-                break;
-              }
-              auto &req           = r.value();
-              auto my_addr        = NimBLEDevice::getAddress();
-              auto my_addr_native = my_addr.getNative();
-              bool is_broadcast   = std::equal(req.addr.begin(), req.addr.end(), HrLoRa::broadcast_addr.data());
-              bool eq             = is_broadcast || std::equal(req.addr.begin(), req.addr.end(), my_addr_native);
-              if (!eq) {
-                ESP_LOGI(TAG, "%s is not for me", utils::toHex(req.addr.data(), req.addr.size()).c_str());
-                break;
-              }
-              auto resp = HrLoRa::query_device_by_mac_response::t{
-                  .repeater_addr = HrLoRa::addr_t{},
-                  .key           = *name_map_key,
-              };
-              std::copy(my_addr_native, my_addr_native + HrLoRa::BLE_ADDR_SIZE, resp.repeater_addr.data());
-              auto device = scan_manager.get_device();
-              if (device) {
-                auto dev = HrLoRa::hr_device::t{};
-                std::copy(device->addr.begin(), device->addr.end(), dev.addr.data());
-                dev.name = device->name;
-              } else {
-                resp.device = etl::nullopt;
-              }
-              uint8_t buf[64];
-              auto sz = HrLoRa::query_device_by_mac_response::marshal(resp, buf, sizeof(buf));
-              if (sz == 0) {
-                ESP_LOGE(TAG, "failed to marshal query_device_by_mac_response");
-                break;
-              }
-              rf.standby();
-              auto err = rf.transmit(buf, sz);
-              if (err != RADIOLIB_ERR_NONE) {
-                ESP_LOGE(TAG, "failed to transmit, code %d", err);
-              } else {
-                ESP_LOGI(TAG, "tx=%s (%d)", utils::toHex(buf, sz).c_str(), sz);
-              }
-            }
-            case HrLoRa::set_name_map_key::magic: {
-              auto r = HrLoRa::set_name_map_key::unmarshal(data, size);
-              if (!r) {
-                ESP_LOGE("recv", "failed to unmarshal set_name_map_key");
-                break;
-              }
-              auto &req     = r.value();
-              *name_map_key = req.key;
-              app_nvs::set_name_map_key(req.key);
-              break;
-            }
-            case HrLoRa::hr_data::magic:
-            case HrLoRa::query_device_by_mac_response::magic: {
-              // from other repeater. do nothing.
-              continue;
-            }
-            default: {
-              ESP_LOGW("recv", "unknown magic: %d", magic);
-            }
-          }
-        }
-      } else {
-        taskYIELD();
+      xEventGroupWaitBits(evt_grp, RecvEvt, true, false, portMAX_DELAY);
+      uint8_t data[255];
+      size_t size = rf.receive(data, sizeof(data));
+      if (size == 0) {
+        ESP_LOGW(TAG, "empty data");
       }
+      ESP_LOGI(TAG, "recv=%s", utils::toHex(data, size).c_str());
+      handleMessage(data, size, rf, scan_manager, name_map_key);
     }
   };
 
@@ -194,7 +224,7 @@ void app_main() {
     delete param;
     vTaskDelete(handle);
   };
-  auto recv_param = new recv_task_param_t{recv_task, &rf, nullptr};
+  auto recv_param = new recv_task_param_t{recv_task, &rf, nullptr, evt_grp};
 
   if (has_addr) {
     scan_manager.set_target_addr(etl::make_optional(addr));
@@ -247,10 +277,11 @@ void app_main() {
     rf.startReceive();
   };
 
+  hr_service.start();
   server.start();
-  scan_manager.start_scanning_task();
   NimBLEDevice::startAdvertising();
 
-  xTaskCreate(run_recv_task, "recv_task", 4096, recv_param, 1, &recv_param->handle);
+  scan_manager.start_scanning_task();
+  xTaskCreate(run_recv_task, "recv_task", 4096, recv_param, 0, &recv_param->handle);
   vTaskDelete(nullptr);
 }
