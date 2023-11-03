@@ -22,7 +22,7 @@ const auto RecvEvt = BIT0;
  * Actually ESP IDF has a API to pass an argument to ISR (`gpio_isr_handler_add`),
  * but RadioLib doesn't use it and I don't want to break the API (though I can).
  */
-void *rf_recv_interrupt_data = nullptr;
+void *rf_recv_interrupt_data_ptr = nullptr;
 
 /**
  * @brief try to transmit the data
@@ -142,22 +142,23 @@ void app_main() {
   /**
    * @brief a key that is used to map the name of the device to a number
    */
-  auto *name_map_key_ptr = new HrLoRa::name_map_key_t{0};
-  err                    = app_nvs::get_name_map_key(name_map_key_ptr);
+  static auto name_map_key = HrLoRa::name_map_key_t{0};
+  auto name_map_key_ptr    = &name_map_key;
+  err                      = app_nvs::get_name_map_key(name_map_key_ptr);
   if (err != ESP_OK) {
     ESP_LOGE(TAG, "no name map key, fallback back to 0; reason %s (%d);", esp_err_to_name(err), err);
   } else {
     ESP_LOGI(TAG, "name map key=%d", *name_map_key_ptr);
   }
 
-  auto &hal = *new ESPHal(pin::SCK, pin::MISO, pin::MOSI);
+  static auto hal = ESPHal(pin::SCK, pin::MISO, pin::MOSI);
   hal.init();
   ESP_LOGI(TAG, "hal init success!");
-  auto &module = *new Module(&hal, pin::CS, pin::DIO1, pin::RST, pin::BUSY);
-  auto &rf     = *new LLCC68(&module);
-  auto st      = rf.begin(434, 500.0, 7, 7,
-                          RADIOLIB_SX126X_SYNC_WORD_PRIVATE,
-                          22, 8, 1.6);
+  static auto module = Module(&hal, pin::CS, pin::DIO1, pin::RST, pin::BUSY);
+  static auto rf     = LLCC68(&module);
+  auto st            = rf.begin(434, 500.0, 7, 7,
+                                RADIOLIB_SX126X_SYNC_WORD_PRIVATE,
+                                22, 8, 1.6);
   if (st != RADIOLIB_ERR_NONE) {
     ESP_LOGE(TAG, "failed, code %d", st);
     vTaskDelay(1000 / portTICK_PERIOD_MS);
@@ -169,13 +170,11 @@ void app_main() {
   struct rf_recv_interrupt_data_t {
     EventGroupHandle_t evt_grp;
   };
-  auto evt_grp           = xEventGroupCreate();
-  rf_recv_interrupt_data = new rf_recv_interrupt_data_t{evt_grp};
+  auto evt_grp                       = xEventGroupCreate();
+  static auto rf_recv_interrupt_data = rf_recv_interrupt_data_t{evt_grp};
+  rf_recv_interrupt_data_ptr         = &rf_recv_interrupt_data;
   rf.setPacketReceivedAction([]() {
-    auto param_ptr = static_cast<rf_recv_interrupt_data_t *>(rf_recv_interrupt_data);
-    if (param_ptr == nullptr) {
-      return;
-    }
+    auto param_ptr = static_cast<rf_recv_interrupt_data_t *>(rf_recv_interrupt_data_ptr);
     // https://www.freertos.org/xEventGroupSetBitsFromISR.html
     BaseType_t task_woken = pdFALSE;
     auto xResult          = xEventGroupSetBitsFromISR(param_ptr->evt_grp, RecvEvt, &task_woken);
@@ -188,28 +187,28 @@ void app_main() {
   rf.startReceive();
 
   NimBLEDevice::init(BLE_NAME);
-  auto &server    = *NimBLEDevice::createServer();
-  auto &server_cb = *new ServerCallbacks();
+  auto &server          = *NimBLEDevice::createServer();
+  static auto server_cb = ServerCallbacks();
   server.setCallbacks(&server_cb);
 
-  auto &scan_manager = *new ScanManager();
-  auto &hr_service   = *server.createService(BLE_CHAR_HR_SERVICE_UUID);
+  static auto scan_manager = ScanManager();
+  auto &hr_service         = *server.createService(BLE_CHAR_HR_SERVICE_UUID);
   // repeat the data from the connected device
-  auto &hr_char     = *hr_service.createCharacteristic(BLE_CHAR_HR_CHAR_UUID,
-                                                       NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY);
-  auto &white_char  = *hr_service.createCharacteristic(BLE_CHAR_WHITE_LIST_UUID,
-                                                       NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::NOTIFY);
-  auto &device_char = *hr_service.createCharacteristic(BLE_CHAR_DEVICE_UUID,
-                                                       NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY);
-  auto &white_cb    = *new WhiteListCallback();
+  auto &hr_char        = *hr_service.createCharacteristic(BLE_CHAR_HR_CHAR_UUID,
+                                                          NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY);
+  auto &white_char     = *hr_service.createCharacteristic(BLE_CHAR_WHITE_LIST_UUID,
+                                                          NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::NOTIFY);
+  auto &device_char    = *hr_service.createCharacteristic(BLE_CHAR_DEVICE_UUID,
+                                                          NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY);
+  static auto white_cb = WhiteListCallback();
   white_char.setCallbacks(&white_cb);
-  white_cb.on_request_address = [&scan_manager]() {
+  white_cb.on_request_address = []() {
     return scan_manager.get_target_addr();
   };
-  white_cb.on_disconnect = [&scan_manager]() {
+  white_cb.on_disconnect = []() {
     scan_manager.set_target_addr(etl::nullopt);
   };
-  white_cb.on_address = [&scan_manager](WhiteListCallback::addr_opt_t addr) {
+  white_cb.on_address = [](WhiteListCallback::addr_opt_t addr) {
     if (addr.has_value()) {
       scan_manager.set_target_addr(etl::make_optional(addr.value().addr));
     } else {
@@ -227,14 +226,14 @@ void app_main() {
     EventGroupHandle_t evt_grp;
   };
 
-  auto &handle_message_callbacks = *new handle_message_callbacks_t{
-      .send             = [&rf](uint8_t *data, size_t size) { tryTransmit(data, size, rf); },
-      .get_device       = [&scan_manager]() { return scan_manager.get_device(); },
+  static auto handle_message_callbacks = handle_message_callbacks_t{
+      .send             = [](uint8_t *data, size_t size) { tryTransmit(data, size, rf); },
+      .get_device       = []() { return scan_manager.get_device(); },
       .set_name_map_key = [name_map_key_ptr](HrLoRa::name_map_key_t key) { *name_map_key_ptr = key; },
       .get_name_map_key = [name_map_key_ptr]() { return *name_map_key_ptr; },
   };
 
-  auto recv_task = [&handle_message_callbacks, evt_grp](LLCC68 &rf) {
+  auto recv_task = [evt_grp](LLCC68 &rf) {
     const auto TAG = "recv";
     for (;;) {
       xEventGroupWaitBits(evt_grp, RecvEvt, pdTRUE, pdFALSE, portMAX_DELAY);
@@ -262,7 +261,7 @@ void app_main() {
     delete param;
     vTaskDelete(handle);
   };
-  auto recv_param = new recv_task_param_t{recv_task, &rf, nullptr, evt_grp};
+  static auto recv_param = recv_task_param_t{recv_task, &rf, nullptr, evt_grp};
 
   scan_manager.on_result = [&device_char](std::string device_name, const uint8_t *addr) {
     uint8_t buf[32]                 = {0};
@@ -293,7 +292,7 @@ void app_main() {
     device_char.notify();
   };
 
-  scan_manager.on_data = [&rf, &hr_char, name_map_key_ptr](HeartMonitor &device, uint8_t *data, size_t size) {
+  scan_manager.on_data = [&hr_char, name_map_key_ptr](HeartMonitor &device, uint8_t *data, size_t size) {
     const auto TAG = "scan_manager";
     ESP_LOGI(TAG, "data: %s", utils::toHex(data, size).c_str());
     // https://community.home-assistant.io/t/ble-heartrate-monitor/300354/43
@@ -347,6 +346,6 @@ void app_main() {
   }
 
   scan_manager.start_scanning_task();
-  xTaskCreate(run_recv_task, "recv_task", 4096, recv_param, 0, &recv_param->handle);
+  xTaskCreate(run_recv_task, "recv_task", 4096, &recv_param, 0, &recv_param.handle);
   vTaskDelete(nullptr);
 }
