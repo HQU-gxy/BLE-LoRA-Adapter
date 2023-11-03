@@ -25,6 +25,24 @@ const auto RecvEvt = BIT0;
 void *rf_recv_interrupt_data = nullptr;
 
 /**
+ * @brief try to transmit the data
+ * @note would block until the transmission is done and will start receiving after that
+ */
+void tryTransmit(uint8_t *data, size_t size, LLCC68 &rf) {
+  const auto TAG = "tryTransmit";
+  auto err       = rf.transmit(data, size);
+  if (err == RADIOLIB_ERR_NONE) {
+    // ok
+  } else if (err == RADIOLIB_ERR_TX_TIMEOUT) {
+    ESP_LOGW(TAG, "tx timeout; please check the busy pin;");
+  } else {
+    ESP_LOGE(TAG, "failed to transmit, code %d", err);
+  }
+  rf.standby();
+  rf.startReceive();
+}
+
+/**
  * @brief handle the message received from LoRa
  * @param data the data received
  * @param size the size of the data
@@ -71,13 +89,7 @@ void handleMessage(uint8_t *data, size_t size, LLCC68 &rf, blue::ScanManager &sc
         ESP_LOGE(TAG, "failed to marshal query_device_by_mac_response");
         break;
       }
-      auto err = rf.transmit(buf, sz);
-      if (err != RADIOLIB_ERR_NONE) {
-        ESP_LOGE(TAG, "failed to transmit, code %d", err);
-      } else {
-        ESP_LOGI(TAG, "tx=%s (%d)", utils::toHex(buf, sz).c_str(), sz);
-      }
-      rf.startReceive();
+      tryTransmit(buf, sz, rf);
       break;
     }
     case HrLoRa::set_name_map_key::magic: {
@@ -151,7 +163,7 @@ void app_main() {
   struct rf_recv_interrupt_data_t {
     EventGroupHandle_t evt_grp;
   };
-  auto evt_grp = xEventGroupCreate();
+  auto evt_grp           = xEventGroupCreate();
   rf_recv_interrupt_data = new rf_recv_interrupt_data_t{evt_grp};
   rf.setPacketReceivedAction([]() {
     auto param_ptr = static_cast<rf_recv_interrupt_data_t *>(rf_recv_interrupt_data);
@@ -304,19 +316,10 @@ void app_main() {
     }
     rf.standby();
     // for LoRa we encode the data as `HrLoRa::hr_data`
-    auto err = rf.transmit(buf, sz);
-    if (err == RADIOLIB_ERR_NONE) {
-      // ok
-    } else if (err == RADIOLIB_ERR_TX_TIMEOUT) {
-      ESP_LOGW(TAG, "tx timeout; please check the busy pin;");
-    } else {
-      ESP_LOGE(TAG, "failed to transmit, code %d", err);
-    }
+    tryTransmit(buf, sz, rf);
     // for Bluetooth LE character we just repeat the data
     hr_char.setValue(data, size);
     hr_char.notify();
-    rf.standby();
-    rf.startReceive();
   };
 
   /**
