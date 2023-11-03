@@ -3,9 +3,11 @@
 //
 #include "app_nvs.h"
 
+static bool is_nvs_init = false;
+
 namespace app_nvs {
 esp_err_t get_addr(addr_t *addr_ptr) {
-  auto TAG      = "get addr";
+  auto TAG      = "addr::get";
   esp_err_t err = 0;
   auto handle   = nvs::open_nvs_handle(common::PREF_PARTITION_LABEL, NVS_READONLY, &err);
   if (err != ESP_OK) {
@@ -22,7 +24,7 @@ esp_err_t get_addr(addr_t *addr_ptr) {
 
 
 esp_err_t set_addr(const addr_t &addr) {
-  const auto TAG = "set addr";
+  const auto TAG = "addr::set";
   esp_err_t err  = 0;
   auto handle    = nvs::open_nvs_handle(common::PREF_PARTITION_LABEL, NVS_READWRITE, &err);
   if (err != ESP_OK) {
@@ -37,7 +39,11 @@ esp_err_t set_addr(const addr_t &addr) {
   return ESP_OK;
 }
 esp_err_t nvs_init() {
-  auto TAG = "WlanManager::init";
+  auto TAG = "nvs init";
+  if (is_nvs_init) {
+    ESP_LOGW(TAG, "nvs already init");
+    return ESP_OK;
+  }
   // Initialize NVS
   esp_err_t ret = nvs_flash_init();
   if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
@@ -45,10 +51,11 @@ esp_err_t nvs_init() {
     ret = nvs_flash_init();
   }
   ESP_RETURN_ON_ERROR(ret, TAG, "Failed to init NVS");
+  is_nvs_init = true;
   return ESP_OK;
 }
 esp_err_t get_name_map_key(name_map_key_t *key_ptr) {
-  auto TAG      = "get name key map";
+  auto TAG      = "name_map_key::get";
   esp_err_t err = ESP_OK;
   auto handle   = nvs::open_nvs_handle(common::PREF_PARTITION_LABEL, NVS_READONLY, &err);
   if (err != ESP_OK) {
@@ -63,7 +70,7 @@ esp_err_t get_name_map_key(name_map_key_t *key_ptr) {
   return ESP_OK;
 }
 esp_err_t set_name_map_key(name_map_key_t key) {
-  const auto TAG = "set name key map";
+  const auto TAG = "name_map_key::set";
   esp_err_t err  = ESP_OK;
   auto handle    = nvs::open_nvs_handle(common::PREF_PARTITION_LABEL, NVS_READWRITE, &err);
   if (err != ESP_OK) {

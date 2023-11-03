@@ -4,6 +4,7 @@
 
 #include "utils.h"
 #include "wlan_manager.h"
+#include "app_nvs.h"
 
 namespace wlan {
 esp_err_t WlanManager::_register_wifi_handlers() {
@@ -97,15 +98,7 @@ esp_err_t WlanManager::_register_wifi_handlers() {
 }
 
 esp_err_t WlanManager::nvs_init() {
-  auto TAG = "WlanManager::init";
-  // Initialize NVS
-  esp_err_t ret = nvs_flash_init();
-  if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-    ESP_RETURN_ON_ERROR(nvs_flash_erase(), TAG, "Failed to erase NVS");
-    ret = nvs_flash_init();
-  }
-  ESP_RETURN_ON_ERROR(ret, TAG, "Failed to init NVS");
-  return ESP_OK;
+  return app_nvs::nvs_init();
 }
 
 esp_err_t WlanManager::wifi_init() { // NOLINT(*-make-member-function-const)
