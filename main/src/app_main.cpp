@@ -42,6 +42,13 @@ void tryTransmit(uint8_t *data, size_t size, LLCC68 &rf) {
   rf.startReceive();
 }
 
+struct handle_message_callbacks_t {
+  std::function<void(uint8_t *data, size_t size)> send            = nullptr;
+  std::function<std::unique_ptr<blue::HeartMonitor>()> get_device = nullptr;
+  std::function<void(HrLoRa::name_map_key_t)> set_name_map_key    = nullptr;
+  std::function<HrLoRa::name_map_key_t()> get_name_map_key        = nullptr;
+};
+
 /**
  * @brief handle the message received from LoRa
  * @param data the data received
@@ -49,9 +56,8 @@ void tryTransmit(uint8_t *data, size_t size, LLCC68 &rf) {
  * @param rf   the LoRa module
  * @param scan_manager
  * @param name_map_key a pointer to the key that is used to map the name of the device to a number
- * @todo refactor this function to use callback instead of passing the dependencies directly
  */
-void handleMessage(uint8_t *data, size_t size, LLCC68 &rf, blue::ScanManager &scan_manager, uint8_t *name_map_key) {
+void handle_message(uint8_t *data, size_t size, const handle_message_callbacks_t &callbacks) {
   const auto TAG = "recv";
   auto magic     = data[0];
   switch (magic) {
@@ -72,10 +78,10 @@ void handleMessage(uint8_t *data, size_t size, LLCC68 &rf, blue::ScanManager &sc
       }
       auto resp = HrLoRa::query_device_by_mac_response::t{
           .repeater_addr = HrLoRa::addr_t{},
-          .key           = *name_map_key,
+          .key           = callbacks.get_name_map_key(),
       };
       std::copy(my_addr_native, my_addr_native + HrLoRa::BLE_ADDR_SIZE, resp.repeater_addr.data());
-      auto device = scan_manager.get_device();
+      auto device = callbacks.get_device();
       if (device) {
         auto dev = HrLoRa::hr_device::t{};
         std::copy(device->addr.begin(), device->addr.end(), dev.addr.data());
@@ -89,7 +95,7 @@ void handleMessage(uint8_t *data, size_t size, LLCC68 &rf, blue::ScanManager &sc
         ESP_LOGE(TAG, "failed to marshal query_device_by_mac_response");
         break;
       }
-      tryTransmit(buf, sz, rf);
+      callbacks.send(buf, sz);
       break;
     }
     case HrLoRa::set_name_map_key::magic: {
@@ -98,8 +104,8 @@ void handleMessage(uint8_t *data, size_t size, LLCC68 &rf, blue::ScanManager &sc
         ESP_LOGE(TAG, "failed to unmarshal set_name_map_key");
         break;
       }
-      auto &req     = r.value();
-      *name_map_key = req.key;
+      auto &req = r.value();
+      callbacks.set_name_map_key(req.key);
       app_nvs::set_name_map_key(req.key);
       ESP_LOGI(TAG, "set name map key to %d", req.key);
       break;
@@ -136,12 +142,12 @@ void app_main() {
   /**
    * @brief a key that is used to map the name of the device to a number
    */
-  auto *name_map_key = new uint8_t(0);
-  err                = app_nvs::get_name_map_key(name_map_key);
+  auto *name_map_key_ptr = new HrLoRa::name_map_key_t{0};
+  err                    = app_nvs::get_name_map_key(name_map_key_ptr);
   if (err != ESP_OK) {
     ESP_LOGE(TAG, "no name map key, fallback back to 0; reason %s (%d);", esp_err_to_name(err), err);
   } else {
-    ESP_LOGI(TAG, "name map key=%d", *name_map_key);
+    ESP_LOGI(TAG, "name map key=%d", *name_map_key_ptr);
   }
 
   auto &hal = *new ESPHal(pin::SCK, pin::MISO, pin::MOSI);
@@ -221,7 +227,14 @@ void app_main() {
     EventGroupHandle_t evt_grp;
   };
 
-  auto recv_task = [&scan_manager, name_map_key, evt_grp](LLCC68 &rf) {
+  auto &handle_message_callbacks = *new handle_message_callbacks_t{
+      .send             = [&rf](uint8_t *data, size_t size) { tryTransmit(data, size, rf); },
+      .get_device       = [&scan_manager]() { return scan_manager.get_device(); },
+      .set_name_map_key = [name_map_key_ptr](HrLoRa::name_map_key_t key) { *name_map_key_ptr = key; },
+      .get_name_map_key = [name_map_key_ptr]() { return *name_map_key_ptr; },
+  };
+
+  auto recv_task = [&handle_message_callbacks, evt_grp](LLCC68 &rf) {
     const auto TAG = "recv";
     for (;;) {
       xEventGroupWaitBits(evt_grp, RecvEvt, pdTRUE, pdFALSE, portMAX_DELAY);
@@ -231,7 +244,7 @@ void app_main() {
         ESP_LOGW(TAG, "empty data");
       }
       ESP_LOGI(TAG, "recv=%s", utils::toHex(data, size).c_str());
-      handleMessage(data, size, rf, scan_manager, name_map_key);
+      handle_message(data, size, handle_message_callbacks);
     }
   };
 
@@ -280,7 +293,7 @@ void app_main() {
     device_char.notify();
   };
 
-  scan_manager.on_data = [&rf, &hr_char, name_map_key](HeartMonitor &device, uint8_t *data, size_t size) {
+  scan_manager.on_data = [&rf, &hr_char, name_map_key_ptr](HeartMonitor &device, uint8_t *data, size_t size) {
     const auto TAG = "scan_manager";
     ESP_LOGI(TAG, "data: %s", utils::toHex(data, size).c_str());
     // https://community.home-assistant.io/t/ble-heartrate-monitor/300354/43
@@ -305,7 +318,7 @@ void app_main() {
       hr = 255;
     }
     auto hr_data = HrLoRa::hr_data::t{
-        .key = *name_map_key,
+        .key = *name_map_key_ptr,
         .hr  = static_cast<uint8_t>(hr),
     };
     uint8_t buf[16];
