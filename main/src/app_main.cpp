@@ -20,8 +20,8 @@ const auto RecvEvt = BIT0;
  * @brief try to transmit the data
  * @note would block until the transmission is done and will start receiving after that
  */
-void tryTransmit(uint8_t *data, size_t size, LLCC68 &rf) {
-  const auto TAG = "tryTransmit";
+void try_transmit(uint8_t *data, size_t size, LLCC68 &rf) {
+  const auto TAG = "try_transmit";
   auto err       = rf.transmit(data, size);
   if (err == RADIOLIB_ERR_NONE) {
     // ok
@@ -230,7 +230,7 @@ void app_main() {
   };
 
   static auto handle_message_callbacks = handle_message_callbacks_t{
-      .send             = [](uint8_t *data, size_t size) { tryTransmit(data, size, rf); },
+      .send             = [](uint8_t *data, size_t size) { try_transmit(data, size, rf); },
       .get_device       = []() { return scan_manager.get_device(); },
       .set_name_map_key = [name_map_key_ptr](HrLoRa::name_map_key_t key) { *name_map_key_ptr = key; },
       .get_name_map_key = [name_map_key_ptr]() { return *name_map_key_ptr; },
@@ -331,7 +331,7 @@ void app_main() {
     }
     rf.standby();
     // for LoRa we encode the data as `HrLoRa::hr_data`
-    tryTransmit(buf, sz, rf);
+    try_transmit(buf, sz, rf);
     // for Bluetooth LE character we just repeat the data
     hr_char.setValue(data, size);
     hr_char.notify();
