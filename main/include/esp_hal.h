@@ -75,12 +75,10 @@ public:
   }
 
   void init() override {
-    // we only need to init the SPI here
     spiBegin();
   }
 
   void term() override {
-    // we only need to stop the SPI here
     spiEnd();
   }
 
@@ -259,7 +257,8 @@ public:
 
   void spiEnd() override {
     spi_bus_remove_device(spi);
-    spi_bus_free(SPI_HOST);
+    // don't free the bus, it might be used by other devices
+    // spi_bus_free(SPI_HOST);
   }
 
   void yield() override {

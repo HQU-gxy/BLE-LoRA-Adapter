@@ -16,13 +16,23 @@ extern "C" void app_main();
 
 const auto RecvEvt = BIT0;
 
+using rf_lock_t = decltype(xSemaphoreCreateMutex());
+
+static const auto send_lk_timeout_tick = 100;
+
 /**
  * @brief try to transmit the data
  * @note would block until the transmission is done and will start receiving after that
  */
-void try_transmit(uint8_t *data, size_t size, LLCC68 &rf) {
+void try_transmit(uint8_t *data, size_t size,
+                  SemaphoreHandle_t lk, TickType_t timeout_tick,
+                  LLCC68 &rf) {
   const auto TAG = "try_transmit";
-  auto err       = rf.transmit(data, size);
+  if (xSemaphoreTake(lk, timeout_tick) != pdTRUE) {
+    ESP_LOGE(TAG, "failed to take rf_lock; no transmission happens;");
+    return;
+  }
+  auto err = rf.transmit(data, size);
   if (err == RADIOLIB_ERR_NONE) {
     // ok
   } else if (err == RADIOLIB_ERR_TX_TIMEOUT) {
@@ -32,6 +42,7 @@ void try_transmit(uint8_t *data, size_t size, LLCC68 &rf) {
   }
   rf.standby();
   rf.startReceive();
+  xSemaphoreGive(lk);
 }
 
 struct handle_message_callbacks_t {
@@ -158,7 +169,7 @@ void app_main() {
                                 RADIOLIB_SX126X_SYNC_WORD_PRIVATE,
                                 22, 8, 1.6);
   if (st != RADIOLIB_ERR_NONE) {
-    ESP_LOGE(TAG, "failed, code %d", st);
+    ESP_LOGE(TAG, "RF begin failed, code %d", st);
     vTaskDelay(1000 / portTICK_PERIOD_MS);
     esp_restart();
   }
@@ -188,6 +199,7 @@ void app_main() {
 
   rf.standby();
   rf.startReceive();
+  auto *rf_lock = xSemaphoreCreateMutex();
 
   NimBLEDevice::init(BLE_NAME);
   auto &server          = *NimBLEDevice::createServer();
@@ -230,18 +242,24 @@ void app_main() {
   };
 
   static auto handle_message_callbacks = handle_message_callbacks_t{
-      .send             = [](uint8_t *data, size_t size) { try_transmit(data, size, rf); },
+      .send             = [rf_lock](uint8_t *data, size_t size) { try_transmit(data, size, rf_lock, send_lk_timeout_tick, rf); },
       .get_device       = []() { return scan_manager.get_device(); },
       .set_name_map_key = [name_map_key_ptr](HrLoRa::name_map_key_t key) { *name_map_key_ptr = key; },
       .get_name_map_key = [name_map_key_ptr]() { return *name_map_key_ptr; },
   };
 
-  auto recv_task = [evt_grp](LLCC68 &rf) {
+  auto recv_task = [evt_grp, rf_lock](LLCC68 &rf) {
     const auto TAG = "recv";
     for (;;) {
       xEventGroupWaitBits(evt_grp, RecvEvt, pdTRUE, pdFALSE, portMAX_DELAY);
       uint8_t data[255];
+      // https://www.freertos.org/a00122.html
+      if (xSemaphoreTake(rf_lock, portMAX_DELAY) != pdTRUE) {
+        ESP_LOGE(TAG, "failed to take rf_lock");
+        abort();
+      }
       size_t size = rf.receive(data, sizeof(data));
+      xSemaphoreGive(rf_lock);
       if (size == 0) {
         ESP_LOGW(TAG, "empty data");
       }
@@ -295,9 +313,9 @@ void app_main() {
     device_char.notify();
   };
 
-  scan_manager.on_data = [&hr_char, name_map_key_ptr](HeartMonitor &device, uint8_t *data, size_t size) {
+  scan_manager.on_data = [&hr_char, name_map_key_ptr, rf_lock](HeartMonitor &device, uint8_t *data, size_t size) {
     const auto TAG = "scan_manager";
-    ESP_LOGI(TAG, "data: %s", utils::toHex(data, size).c_str());
+    // ESP_LOGI(TAG, "data: %s", utils::toHex(data, size).c_str());
     // https://community.home-assistant.io/t/ble-heartrate-monitor/300354/43
     // 3.103 Heart Rate Measurement of GATT Specification Supplement
     // first byte is a struct of some flags
@@ -309,11 +327,9 @@ void app_main() {
     int hr;
     if ((data[0] & 0b1) == 0) {
       hr = data[1];
-      ESP_LOGI(TAG, "hr=%d", hr);
     } else {
       // if bit 0 of the first byte is 1, it's uint16 and it's little endian
       hr = ::le16dec(data + 1);
-      ESP_LOGI(TAG, "hr=%d (uint16le)", hr);
     }
     if (hr > 255) {
       ESP_LOGW(TAG, "hr overflow; cap to 255;");
@@ -323,6 +339,12 @@ void app_main() {
         .key = *name_map_key_ptr,
         .hr  = static_cast<uint8_t>(hr),
     };
+    if (hr_data.hr <= 0) {
+      ESP_LOGW(TAG, "hr=%d; skip;", hr_data.hr);
+      return;
+    } else {
+      ESP_LOGI(TAG, "hr=%d", hr_data.hr);
+    }
     uint8_t buf[16];
     auto sz = HrLoRa::hr_data::marshal(hr_data, buf, sizeof(buf));
     if (sz == 0) {
@@ -331,7 +353,7 @@ void app_main() {
     }
     rf.standby();
     // for LoRa we encode the data as `HrLoRa::hr_data`
-    try_transmit(buf, sz, rf);
+    try_transmit(buf, sz, rf_lock, send_lk_timeout_tick, rf);
     // for Bluetooth LE character we just repeat the data
     hr_char.setValue(data, size);
     hr_char.notify();
