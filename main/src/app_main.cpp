@@ -24,6 +24,7 @@ using rf_lock_t = decltype(xSemaphoreCreateMutex());
 static const auto send_lk_timeout_tick = 100;
 
 class SendScheduler {
+  static constexpr auto TAG = "SendScheduler";
   std::vector<uint8_t> data{};
   TimerHandle_t timer = nullptr;
   struct send_timer_param_t {
@@ -52,7 +53,6 @@ public:
    */
   bool schedule(uint8_t *pdata, uint8_t size, std::chrono::milliseconds interval) {
     this->data       = std::vector<uint8_t>(pdata, pdata + size);
-    auto now         = std::chrono::steady_clock::now();
     bool is_replaced = false;
     if (this->timer != nullptr) {
       clear_timer();
@@ -60,10 +60,11 @@ public:
     }
 
     auto send_task = [this]() {
-      if (this->send == nullptr) {
-        return;
+      if (this->send != nullptr) {
+        send(data.data(), data.size());
+      } else {
+        ESP_LOGW(TAG, "send callback is empty");
       }
-      send(data.data(), data.size());
       clear_timer();
     };
 
