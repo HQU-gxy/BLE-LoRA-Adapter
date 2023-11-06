@@ -10,15 +10,77 @@
 #include "app_nvs.h"
 #include <endian.h>
 #include <freertos/event_groups.h>
+#include <etl/random.h>
 #include <cstring>
+#include <utility>
 
 extern "C" void app_main();
 
-const auto RecvEvt = BIT0;
+const auto RecvEvt     = BIT0;
+const auto ScheduleEvt = BIT2;
 
 using rf_lock_t = decltype(xSemaphoreCreateMutex());
 
 static const auto send_lk_timeout_tick = 100;
+
+class SendScheduler {
+  std::vector<uint8_t> data{};
+  TimerHandle_t timer = nullptr;
+  struct send_timer_param_t {
+    std::function<void()> fn;
+  };
+  send_timer_param_t timer_param{[]() {}};
+
+public:
+  std::function<void(uint8_t *data, size_t size)>
+      send = nullptr;
+
+  void clear_timer() {
+    if (this->timer != nullptr) {
+      xTimerStop(this->timer, portMAX_DELAY);
+      xTimerDelete(this->timer, portMAX_DELAY);
+      this->timer = nullptr;
+    }
+  }
+
+  /**
+   * @brief schedule the data to be sent
+   * @param pdata the data to be sent
+   * @param size the size of the data
+   * @param interval the interval between transmission
+   * @return if the previous timer is replaced
+   */
+  bool schedule(uint8_t *pdata, uint8_t size, std::chrono::milliseconds interval) {
+    this->data       = std::vector<uint8_t>(pdata, pdata + size);
+    auto now         = std::chrono::steady_clock::now();
+    bool is_replaced = false;
+    if (this->timer != nullptr) {
+      clear_timer();
+      is_replaced = true;
+    }
+
+    auto send_task = [this]() {
+      if (this->send == nullptr) {
+        return;
+      }
+      send(data.data(), data.size());
+      clear_timer();
+    };
+
+    this->timer_param.fn = send_task;
+    auto run_send_task   = [](TimerHandle_t handle) {
+      auto *param = static_cast<send_timer_param_t *>(pvTimerGetTimerID(handle));
+      param->fn();
+    };
+    this->timer = xTimerCreate("send_timer",
+                               interval.count(),
+                               pdFALSE,
+                               &this->timer_param,
+                               run_send_task);
+    xTimerStart(this->timer, portMAX_DELAY);
+    return is_replaced;
+  }
+};
 
 /**
  * @brief try to transmit the data
