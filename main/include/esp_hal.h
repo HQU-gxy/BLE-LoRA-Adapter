@@ -8,7 +8,9 @@
 // modify from
 // I'm using ESP-IDF API here
 // https://github.com/jgromes/RadioLib/blob/aca1d78a9742e17947eaf5cddb63a10f10e3fafe/examples/NonArduino/ESP-IDF/main/EspHal.h
-#if CONFIG_IDF_TARGET_ESP32C3 == 0
+#if CONFIG_IDF_TARGET_ESP32C3 == 1
+#elif CONFIG_IDF_TARGET_ESP32 == 1
+#else
 #error Target is not ESP32C3!
 #endif
 
