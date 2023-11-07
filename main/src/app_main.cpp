@@ -21,6 +21,8 @@ const auto RecvEvt = BIT0;
 
 static const auto send_lk_timeout_tick = 100;
 
+// https://docs.espressif.com/projects/esp-idf/en/v5.0/esp32c3/api-reference/system/power_management.html
+// https://github.com/espressif/esp-idf/tree/b4268c874a4/examples/wifi/power_save
 class SendScheduler {
   static constexpr auto TAG = "SendScheduler";
   std::vector<uint8_t> data{};
@@ -352,7 +354,6 @@ void app_main() {
       if (size == 0) {
         ESP_LOGW(TAG, "empty data");
       }
-      ESP_LOGI(TAG, "recv=%s", utils::toHex(data, size).c_str());
       handle_message(data, size, handle_message_callbacks);
     }
   };
