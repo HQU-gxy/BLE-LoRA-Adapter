@@ -15,7 +15,7 @@
 #include <utility>
 #include <esp_random.h>
 
-#define DISABLE_LORA
+// #define DISABLE_LORA
 
 extern "C" void app_main();
 
@@ -160,6 +160,7 @@ void handle_message(uint8_t *data, size_t size, const handle_message_callbacks_t
     }
     return status;
   };
+
   static auto rng = etl::random_xorshift(esp_random());
   auto magic      = data[0];
   switch (magic) {
@@ -174,9 +175,9 @@ void handle_message(uint8_t *data, size_t size, const handle_message_callbacks_t
         ESP_LOGI(TAG, "%s is not for me", utils::toHex(req.addr.data(), req.addr.size()).c_str());
         break;
       }
-      auto status = get_device_status();
-      uint8_t buf[64];
-      auto sz = HrLoRa::repeater_status::marshal(status, buf, sizeof(buf));
+      auto status     = get_device_status();
+      uint8_t buf[64] = {0};
+      auto sz         = HrLoRa::repeater_status::marshal(status, buf, sizeof(buf));
       if (sz == 0) {
         ESP_LOGE(TAG, "failed to marshal query_device_by_mac_response");
         break;
@@ -196,9 +197,9 @@ void handle_message(uint8_t *data, size_t size, const handle_message_callbacks_t
       app_nvs::set_name_map_key(req.key);
       ESP_LOGI(TAG, "set name map key to %d", req.key);
       // send the new status back after setting the name map key
-      uint8_t buf[64];
-      auto status = get_device_status();
-      auto sz     = HrLoRa::repeater_status::size_needed(status);
+      uint8_t buf[64] = {0};
+      auto status     = get_device_status();
+      auto sz         = HrLoRa::repeater_status::size_needed(status);
       if (sz == 0) {
         ESP_LOGE(TAG, "failed to marshal repeater_status");
         break;
@@ -212,7 +213,7 @@ void handle_message(uint8_t *data, size_t size, const handle_message_callbacks_t
       return;
     }
     default: {
-      ESP_LOGW("recv", "unknown magic: %d", magic);
+      ESP_LOGW("recv", "unknown magic: 0x%02x", magic);
     }
   }
 }
@@ -365,10 +366,33 @@ void app_main() {
         ESP_LOGE(TAG, "failed to take rf_lock");
         abort();
       }
-      size_t size = rf.receive(data, sizeof(data));
+      auto length = rf.getPacketLength(true);
+      auto size   = rf.readData(data, length);
+      std::string irq_status_str;
+      auto status = rf.getIrqStatus();
+      if (status & RADIOLIB_SX126X_IRQ_TIMEOUT) {
+        irq_status_str += "t";
+      }
+      if (status & RADIOLIB_SX126X_IRQ_RX_DONE) {
+        irq_status_str += "r";
+      }
+      if (status & RADIOLIB_SX126X_IRQ_CRC_ERR) {
+        irq_status_str += "c";
+      }
+      if (status & RADIOLIB_SX126X_IRQ_HEADER_ERR) {
+        irq_status_str += "h";
+      }
+      if (status & RADIOLIB_SX126X_IRQ_TX_DONE) {
+        irq_status_str += "x";
+      }
+      if (!irq_status_str.empty()) {
+        ESP_LOGI(TAG, "flag=%s", irq_status_str.c_str());
+      }
       xSemaphoreGive(rf_lock);
       if (size == 0) {
-        ESP_LOGW(TAG, "empty data");
+        continue;
+      } else {
+        ESP_LOGI(TAG, "data=%s(%d)", utils::toHex(data, size).c_str(), size);
       }
       handle_message(data, size, handle_message_callbacks);
     }
@@ -444,7 +468,7 @@ void app_main() {
       hr = 255;
     }
 
-    uint8_t buf[48];
+    uint8_t buf[48] = {0};
 
     size_t sz;
     if (hr <= 0) {
