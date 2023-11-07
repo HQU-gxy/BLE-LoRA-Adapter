@@ -20,8 +20,6 @@ extern "C" void app_main();
 const auto RecvEvt     = BIT0;
 const auto ScheduleEvt = BIT2;
 
-using rf_lock_t = decltype(xSemaphoreCreateMutex());
-
 static const auto send_lk_timeout_tick = 100;
 
 class SendScheduler {
@@ -386,7 +384,8 @@ void app_main() {
     device_char.notify();
   };
 
-  scan_manager.on_data = [&hr_char, name_map_key_ptr, rf_lock](HeartMonitor &device, uint8_t *data, size_t size) {
+  static uint32_t on_data_counter = 0;
+  scan_manager.on_data            = [&hr_char, name_map_key_ptr, rf_lock](HeartMonitor &device, uint8_t *data, size_t size) {
     const auto TAG = "scan_manager";
     // ESP_LOGI(TAG, "data: %s", utils::toHex(data, size).c_str());
     // https://community.home-assistant.io/t/ble-heartrate-monitor/300354/43
@@ -408,22 +407,42 @@ void app_main() {
       ESP_LOGW(TAG, "hr overflow; cap to 255;");
       hr = 255;
     }
-    auto hr_data = HrLoRa::hr_data::t{
-        .key = *name_map_key_ptr,
-        .hr  = static_cast<uint8_t>(hr),
-    };
-    if (hr_data.hr <= 0) {
-      ESP_LOGW(TAG, "hr=%d; skip;", hr_data.hr);
+
+    uint8_t buf[48];
+
+    size_t sz;
+    if (hr <= 0) {
+      ESP_LOGW(TAG, "hr=%d; skip;", hr);
       return;
     } else {
-      ESP_LOGI(TAG, "hr=%d", hr_data.hr);
+      ESP_LOGI(TAG, "hr=%d", hr);
     }
-    uint8_t buf[16];
-    auto sz = HrLoRa::hr_data::marshal(hr_data, buf, sizeof(buf));
-    if (sz == 0) {
-      ESP_LOGE(TAG, "failed to marshal hr_data");
-      return;
+
+    if (on_data_counter % common::INTERVAL_SEND_NAMED_HR_COUNT == 0) {
+      auto named_hr_data = HrLoRa::named_hr_data::t{
+                     .key  = *name_map_key_ptr,
+                     .hr   = static_cast<uint8_t>(hr),
+                     .name = device.name,
+      };
+      sz = HrLoRa::named_hr_data::marshal(named_hr_data, buf, sizeof(buf));
+      if (sz == 0) {
+        ESP_LOGE(TAG, "failed to marshal named_hr_data");
+        return;
+      }
+    } else {
+      auto hr_data = HrLoRa::hr_data::t{
+                     .key = *name_map_key_ptr,
+                     .hr  = static_cast<uint8_t>(hr),
+      };
+      sz = HrLoRa::hr_data::marshal(hr_data, buf, sizeof(buf));
+      if (sz == 0) {
+        ESP_LOGE(TAG, "failed to marshal hr_data");
+        return;
+      }
     }
+
+    on_data_counter += 1;
+
     rf.standby();
     // for LoRa we encode the data as `HrLoRa::hr_data`
     try_transmit(buf, sz, rf_lock, send_lk_timeout_tick, rf);
