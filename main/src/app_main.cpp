@@ -13,6 +13,7 @@
 #include <etl/random.h>
 #include <cstring>
 #include <utility>
+#include <esp_random.h>
 
 extern "C" void app_main();
 
@@ -109,10 +110,11 @@ void try_transmit(uint8_t *data, size_t size,
 }
 
 struct handle_message_callbacks_t {
-  std::function<void(uint8_t *data, size_t size)> send          = nullptr;
-  std::function<etl::optional<blue::HeartMonitor>()> get_device = nullptr;
-  std::function<void(HrLoRa::name_map_key_t)> set_name_map_key  = nullptr;
-  std::function<HrLoRa::name_map_key_t()> get_name_map_key      = nullptr;
+  std::function<void(uint8_t *data, size_t size, std::chrono::milliseconds)> schedule = nullptr;
+  std::function<void(uint8_t *data, size_t size)> send                                = nullptr;
+  std::function<etl::optional<blue::HeartMonitor>()> get_device                       = nullptr;
+  std::function<void(HrLoRa::name_map_key_t)> set_name_map_key                        = nullptr;
+  std::function<HrLoRa::name_map_key_t()> get_name_map_key                            = nullptr;
 };
 
 /**
@@ -124,6 +126,7 @@ struct handle_message_callbacks_t {
 void handle_message(uint8_t *data, size_t size, const handle_message_callbacks_t &callbacks) {
   const auto TAG   = "recv";
   bool is_cb_empty = callbacks.send == nullptr ||
+                     callbacks.schedule == nullptr ||
                      callbacks.get_device == nullptr ||
                      callbacks.set_name_map_key == nullptr ||
                      callbacks.get_name_map_key == nullptr;
@@ -131,7 +134,8 @@ void handle_message(uint8_t *data, size_t size, const handle_message_callbacks_t
     ESP_LOGE(TAG, "at least one callback is empty");
     return;
   }
-  auto magic = data[0];
+  static auto rng = etl::random_xorshift(esp_random());
+  auto magic      = data[0];
   switch (magic) {
     case HrLoRa::query_device_by_mac::magic: {
       auto r = HrLoRa::query_device_by_mac::unmarshal(data, size);
@@ -167,7 +171,8 @@ void handle_message(uint8_t *data, size_t size, const handle_message_callbacks_t
         ESP_LOGE(TAG, "failed to marshal query_device_by_mac_response");
         break;
       }
-      callbacks.send(buf, sz);
+      auto interval = std::chrono::milliseconds{rng.range(0, common::MAX_RF_MSG_SCHEDULE_DELAY_MS)};
+      callbacks.schedule(buf, sz, interval);
       break;
     }
     case HrLoRa::set_name_map_key::magic: {
@@ -304,7 +309,12 @@ void app_main() {
     EventGroupHandle_t evt_grp;
   };
 
+  static auto send_scheduler = SendScheduler();
+  send_scheduler.send        = [rf_lock](uint8_t *data, size_t size) {
+    try_transmit(data, size, rf_lock, send_lk_timeout_tick, rf);
+  };
   static auto handle_message_callbacks = handle_message_callbacks_t{
+      .schedule         = [](uint8_t *data, size_t size, std::chrono::milliseconds interval) { send_scheduler.schedule(data, size, interval); },
       .send             = [rf_lock](uint8_t *data, size_t size) { try_transmit(data, size, rf_lock, send_lk_timeout_tick, rf); },
       .get_device       = []() { return scan_manager.get_device(); },
       .set_name_map_key = [name_map_key_ptr](HrLoRa::name_map_key_t key) { *name_map_key_ptr = key; },

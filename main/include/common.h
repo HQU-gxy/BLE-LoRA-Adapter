@@ -32,6 +32,7 @@ constexpr auto BLE_NAME                         = "LoRA-Adapter";
 constexpr auto SCAN_TIME                        = std::chrono::milliseconds(2500);
 // scan time + sleep time
 constexpr auto SCAN_TOTAL_TIME = std::chrono::milliseconds(5000);
+static auto MAX_RF_MSG_SCHEDULE_DELAY_MS = 3000;
 static_assert(SCAN_TOTAL_TIME > SCAN_TIME);
 
 static constexpr auto PREF_PARTITION_LABEL = "st";
