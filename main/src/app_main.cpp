@@ -219,6 +219,7 @@ void app_main() {
   const auto TAG = "main";
   ESP_LOGI(TAG, "boot");
 
+  // https://github.com/h2zero/esp-nimble-cpp/blob/4e65ce5d32a458b285c536f680edc550c60aeb92/examples/Bluetooth_5/NimBLE_extended_server/main/main.cpp
   auto err = app_nvs::nvs_init();
   ESP_ERROR_CHECK(err);
   app_nvs::addr_t addr{0};

@@ -11,6 +11,7 @@
 namespace common {
 namespace pin {
   // https://docs.espressif.com/projects/esp-idf/en/latest/esp32c3/api-reference/peripherals/gpio.html
+#if CONFIG_IDF_TARGET_ESP32
   static const auto SCK  = GPIO_NUM_16;
   static const auto CS   = GPIO_NUM_4;
   static const auto MOSI = GPIO_NUM_17;
@@ -20,6 +21,19 @@ namespace pin {
   static const auto DIO1 = GPIO_NUM_21;
   static const auto DIO2 = GPIO_NUM_33;
   static const auto DIO3 = GPIO_NUM_26;
+#elif CONFIG_IDF_TARGET_ESP32C3
+  constexpr auto SCK  = GPIO_NUM_8;
+  constexpr auto MOSI = GPIO_NUM_9;
+  constexpr auto MISO = GPIO_NUM_10;
+  // i.e. NSS chip select
+  constexpr auto CS   = GPIO_NUM_3;
+  constexpr auto BUSY = GPIO_NUM_19;
+  constexpr auto RST  = GPIO_NUM_18;
+  constexpr auto DIO1 = GPIO_NUM_1;
+  constexpr auto DIO2 = GPIO_NUM_2;
+#else
+#error "Unsupported target"
+#endif
 }
 
 static const char *BLE_CHAR_WHITE_LIST_UUID     = "12a481f0-9384-413d-b002-f8660566d3b0";
