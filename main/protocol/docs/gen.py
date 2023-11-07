@@ -5,7 +5,14 @@ import subprocess
 
 pwd = Path(__file__).parent
 
-files = ["hr_data", "query_device_by_mac", "query_device_by_mac_r", "set_name_map_key", "common"]
+files = [
+    "hr_data",
+    "named_hr_data",
+    "query_device_by_mac",
+    "query_device_by_mac_r",
+    "set_name_map_key",
+    "common",
+]
 
 kaitai = shutil.which("kaitai-struct-compiler")
 dot = shutil.which("dot")
@@ -23,14 +30,37 @@ def gen(file: str, src_dir: Path, out_dir: Path):
     input_file = src_dir / f"{file}.ksy"
     if not input_file.exists():
         raise RuntimeError(f"Input file {input_file} does not exist")
-    subprocess.run([kaitai, "-t", "graphviz", "--outdir", str(out_dir.absolute()), str(input_file.absolute())],
-                   check=True)
-    subprocess.run([dot, "-Tpng", str(out_dir / f"{file}.dot"), "-o", str(out_dir / f"{file}.png")], check=True)
+    subprocess.run(
+        [
+            kaitai,
+            "-t",
+            "graphviz",
+            "--outdir",
+            str(out_dir.absolute()),
+            str(input_file.absolute()),
+        ],
+        check=True,
+    )
+    subprocess.run(
+        [
+            dot,
+            "-Tpng",
+            str(out_dir / f"{file}.dot"),
+            "-o",
+            str(out_dir / f"{file}.png"),
+        ],
+        check=True,
+    )
 
 
 @click.command()
 @click.option("--src", "-s", type=click.Path(exists=True, file_okay=False), default=pwd)
-@click.option("--dst", "-d", type=click.Path(exists=True, file_okay=False), default=pwd / "figures")
+@click.option(
+    "--dst",
+    "-d",
+    type=click.Path(exists=True, file_okay=False),
+    default=pwd / "figures",
+)
 def main(src: str, dst: str):
     src_dir = Path(src)
     dst_dir = Path(dst)
