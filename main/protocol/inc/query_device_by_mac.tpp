@@ -81,9 +81,7 @@ struct hr_device {
       data.addr[i] = buffer[i];
     }
     size_t offset = BLE_ADDR_SIZE;
-    while (offset < buffer_size && buffer[offset] != 0) {
-      data.name.push_back(buffer[offset++]);
-    }
+    data.name     = std::string(reinterpret_cast<const char *>(buffer + offset));
     return data;
   }
 };

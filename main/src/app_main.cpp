@@ -18,7 +18,6 @@
 extern "C" void app_main();
 
 const auto RecvEvt     = BIT0;
-const auto ScheduleEvt = BIT2;
 
 static const auto send_lk_timeout_tick = 100;
 
