@@ -15,6 +15,8 @@
 #include <utility>
 #include <esp_random.h>
 
+#define DISABLE_LORA
+
 extern "C" void app_main();
 
 const auto RecvEvt = BIT0;
@@ -246,6 +248,7 @@ void app_main() {
     ESP_LOGI(TAG, "name map key=%d", *name_map_key_ptr);
   }
 
+#ifndef DISABLE_LORA
   static auto hal = ESPHal(pin::SCK, pin::MISO, pin::MOSI);
   hal.init();
   ESP_LOGI(TAG, "hal init success!");
@@ -285,6 +288,7 @@ void app_main() {
 
   rf.standby();
   rf.startReceive();
+#endif
   auto *rf_lock = xSemaphoreCreateMutex();
 
   NimBLEDevice::init(BLE_NAME);
@@ -328,7 +332,8 @@ void app_main() {
   };
 
   static auto send_scheduler = SendScheduler();
-  send_scheduler.send        = [rf_lock](uint8_t *data, size_t size) {
+#ifndef DISABLE_LORA
+  send_scheduler.send = [rf_lock](uint8_t *data, size_t size) {
     try_transmit(data, size, rf_lock, send_lk_timeout_tick, rf);
   };
   static auto handle_message_callbacks = handle_message_callbacks_t{
@@ -338,7 +343,18 @@ void app_main() {
       .set_name_map_key = [name_map_key_ptr](HrLoRa::name_map_key_t key) { *name_map_key_ptr = key; },
       .get_name_map_key = [name_map_key_ptr]() { return *name_map_key_ptr; },
   };
+#else
+  send_scheduler.send                  = [](uint8_t *data, size_t size) {};
+  static auto handle_message_callbacks = handle_message_callbacks_t{
+      .schedule         = [](uint8_t *data, size_t size, std::chrono::milliseconds interval) {},
+      .send             = [](uint8_t *data, size_t size) {},
+      .get_device       = []() { return etl::nullopt; },
+      .set_name_map_key = [name_map_key_ptr](HrLoRa::name_map_key_t key) { *name_map_key_ptr = key; },
+      .get_name_map_key = [name_map_key_ptr]() { return *name_map_key_ptr; },
+  };
+#endif
 
+#ifndef DISABLE_LORA
   auto recv_task = [evt_grp, rf_lock](LLCC68 &rf) {
     const auto TAG = "recv";
     for (;;) {
@@ -402,6 +418,7 @@ void app_main() {
     device_char.setValue(buf, sz);
     device_char.notify();
   };
+#endif
 
   static uint32_t on_data_counter = 0;
   scan_manager.on_data            = [&hr_char, name_map_key_ptr, rf_lock](HeartMonitor &device, uint8_t *data, size_t size) {
@@ -462,9 +479,13 @@ void app_main() {
 
     on_data_counter += 1;
 
+#ifndef DISABLE_LORA
     rf.standby();
     // for LoRa we encode the data as `HrLoRa::hr_data`
     try_transmit(buf, sz, rf_lock, send_lk_timeout_tick, rf);
+#else
+    auto a = rf_lock;
+#endif
     // for Bluetooth LE character we just repeat the data
     hr_char.setValue(data, size);
     hr_char.notify();
@@ -482,6 +503,8 @@ void app_main() {
   }
 
   scan_manager.start_scanning_task();
+#ifndef DISABLE_LORA
   xTaskCreate(run_recv_task, "recv_task", 4096, &recv_param, 0, &recv_param.handle);
+#endif
   vTaskDelete(nullptr);
 }
