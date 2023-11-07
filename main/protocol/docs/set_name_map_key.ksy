@@ -10,7 +10,7 @@ doc: |
    to set the key to the name of the device.
    The key is used to represent the device name in messages from the HR monitor
    to the repeater, in order to reduce the size of the message.
-   This is necessary because bandwidth is limited for LoRA.
+   This is necessary because bandwidth is limited for LoRa.
 
 seq:
   - id: magic_0x79

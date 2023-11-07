@@ -8,6 +8,6 @@ HR over LoRA. See the [kaitai struct](https://kaitai.io) files in the directory.
 
 ![query_device_by_mac](figures/query_device_by_mac.png)
 
-![query_device_by_mac_response](figures/query_device_by_mac_r.png)
+![repeater_status](figures/query_device_by_mac_r.png)
 
 ![set_name_map_key](figures/set_name_map_key.png)

@@ -1,5 +1,5 @@
 meta:
-  id: query_device_by_mac_r
+  id: repeater_status
   title: Query by MAC Response
   imports:
     - common

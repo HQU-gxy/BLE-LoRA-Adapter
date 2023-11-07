@@ -9,7 +9,7 @@ files = [
     "hr_data",
     "named_hr_data",
     "query_device_by_mac",
-    "query_device_by_mac_r",
+    "repeater_status",
     "set_name_map_key",
     "common",
 ]

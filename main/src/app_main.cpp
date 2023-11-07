@@ -149,7 +149,7 @@ void handle_message(uint8_t *data, size_t size, const handle_message_callbacks_t
         ESP_LOGI(TAG, "%s is not for me", utils::toHex(req.addr.data(), req.addr.size()).c_str());
         break;
       }
-      auto resp = HrLoRa::query_device_by_mac_response::t{
+      auto resp = HrLoRa::repeater_status::t{
           .repeater_addr = HrLoRa::addr_t{},
           .key           = callbacks.get_name_map_key(),
       };
@@ -163,7 +163,7 @@ void handle_message(uint8_t *data, size_t size, const handle_message_callbacks_t
         resp.device = etl::nullopt;
       }
       uint8_t buf[64];
-      auto sz = HrLoRa::query_device_by_mac_response::marshal(resp, buf, sizeof(buf));
+      auto sz = HrLoRa::repeater_status::marshal(resp, buf, sizeof(buf));
       if (sz == 0) {
         ESP_LOGE(TAG, "failed to marshal query_device_by_mac_response");
         break;
@@ -185,7 +185,7 @@ void handle_message(uint8_t *data, size_t size, const handle_message_callbacks_t
       break;
     }
     case HrLoRa::hr_data::magic:
-    case HrLoRa::query_device_by_mac_response::magic: {
+    case HrLoRa::repeater_status::magic: {
       // from other repeater. do nothing.
       return;
     }
