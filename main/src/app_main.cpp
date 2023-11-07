@@ -17,7 +17,7 @@
 
 extern "C" void app_main();
 
-const auto RecvEvt     = BIT0;
+const auto RecvEvt = BIT0;
 
 static const auto send_lk_timeout_tick = 100;
 
@@ -419,10 +419,10 @@ void app_main() {
 
     if (on_data_counter % common::INTERVAL_SEND_NAMED_HR_COUNT == 0) {
       auto named_hr_data = HrLoRa::named_hr_data::t{
-                     .key  = *name_map_key_ptr,
-                     .hr   = static_cast<uint8_t>(hr),
-                     .name = device.name,
+                     .key = *name_map_key_ptr,
+                     .hr  = static_cast<uint8_t>(hr),
       };
+      std::copy(device.addr.begin(), device.addr.end(), named_hr_data.addr.begin());
       sz = HrLoRa::named_hr_data::marshal(named_hr_data, buf, sizeof(buf));
       if (sz == 0) {
         ESP_LOGE(TAG, "failed to marshal named_hr_data");

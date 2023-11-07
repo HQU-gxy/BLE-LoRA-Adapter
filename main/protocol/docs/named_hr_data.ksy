@@ -6,7 +6,7 @@ meta:
   endian: be
 
 doc: |
-  `hr_data` represents heart rate data transmitted by Repeater.
+  named_hr_data transmit the HR with Bluetooth LE address.
 
 seq:
   - id: magic_0x60
@@ -18,7 +18,5 @@ seq:
     type: u1
     doc: |
       The heart rate in beats per minute.
-  - id: name
-    type: strz
-    encoding: utf-8
-
+  - id: addr
+    type: common::ble_addr
