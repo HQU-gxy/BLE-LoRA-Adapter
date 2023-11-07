@@ -131,6 +131,31 @@ void handle_message(uint8_t *data, size_t size, const handle_message_callbacks_t
     ESP_LOGE(TAG, "at least one callback is empty");
     return;
   }
+  auto is_my_address = [](const HrLoRa::addr_t &req_addr) {
+    auto my_addr        = NimBLEDevice::getAddress();
+    auto my_addr_native = my_addr.getNative();
+    bool is_broadcast   = std::equal(req_addr.begin(), req_addr.end(), HrLoRa::broadcast_addr.data());
+    bool eq             = is_broadcast || std::equal(req_addr.begin(), req_addr.end(), my_addr_native);
+    return eq;
+  };
+  auto get_device_status = [&callbacks]() {
+    auto my_addr        = NimBLEDevice::getAddress();
+    auto my_addr_native = my_addr.getNative();
+    auto status         = HrLoRa::repeater_status::t{
+                .repeater_addr = HrLoRa::addr_t{},
+                .key           = callbacks.get_name_map_key(),
+    };
+    std::copy(my_addr_native, my_addr_native + HrLoRa::BLE_ADDR_SIZE, status.repeater_addr.data());
+    auto device = callbacks.get_device();
+    if (device) {
+      auto dev = HrLoRa::hr_device::t{};
+      std::copy(device->addr.begin(), device->addr.end(), dev.addr.data());
+      dev.name = device->name;
+    } else {
+      status.device = etl::nullopt;
+    }
+    return status;
+  };
   static auto rng = etl::random_xorshift(esp_random());
   auto magic      = data[0];
   switch (magic) {
@@ -140,30 +165,14 @@ void handle_message(uint8_t *data, size_t size, const handle_message_callbacks_t
         ESP_LOGE(TAG, "failed to unmarshal query_device_by_mac");
         break;
       }
-      auto &req           = r.value();
-      auto my_addr        = NimBLEDevice::getAddress();
-      auto my_addr_native = my_addr.getNative();
-      bool is_broadcast   = std::equal(req.addr.begin(), req.addr.end(), HrLoRa::broadcast_addr.data());
-      bool eq             = is_broadcast || std::equal(req.addr.begin(), req.addr.end(), my_addr_native);
-      if (!eq) {
+      auto &req = r.value();
+      if (!is_my_address(req.addr)) {
         ESP_LOGI(TAG, "%s is not for me", utils::toHex(req.addr.data(), req.addr.size()).c_str());
         break;
       }
-      auto resp = HrLoRa::repeater_status::t{
-          .repeater_addr = HrLoRa::addr_t{},
-          .key           = callbacks.get_name_map_key(),
-      };
-      std::copy(my_addr_native, my_addr_native + HrLoRa::BLE_ADDR_SIZE, resp.repeater_addr.data());
-      auto device = callbacks.get_device();
-      if (device) {
-        auto dev = HrLoRa::hr_device::t{};
-        std::copy(device->addr.begin(), device->addr.end(), dev.addr.data());
-        dev.name = device->name;
-      } else {
-        resp.device = etl::nullopt;
-      }
+      auto status = get_device_status();
       uint8_t buf[64];
-      auto sz = HrLoRa::repeater_status::marshal(resp, buf, sizeof(buf));
+      auto sz = HrLoRa::repeater_status::marshal(status, buf, sizeof(buf));
       if (sz == 0) {
         ESP_LOGE(TAG, "failed to marshal query_device_by_mac_response");
         break;
@@ -182,6 +191,15 @@ void handle_message(uint8_t *data, size_t size, const handle_message_callbacks_t
       callbacks.set_name_map_key(req.key);
       app_nvs::set_name_map_key(req.key);
       ESP_LOGI(TAG, "set name map key to %d", req.key);
+      // send the new status back after setting the name map key
+      uint8_t buf[64];
+      auto status = get_device_status();
+      auto sz     = HrLoRa::repeater_status::size_needed(status);
+      if (sz == 0) {
+        ESP_LOGE(TAG, "failed to marshal repeater_status");
+        break;
+      }
+      callbacks.send(buf, sz);
       break;
     }
     case HrLoRa::hr_data::magic:
