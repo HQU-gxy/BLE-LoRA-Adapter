@@ -230,7 +230,7 @@ void app_main() {
   ESP_LOGI(TAG, "hal init success!");
   static auto module = Module(&hal, pin::CS, pin::DIO1, pin::RST, pin::BUSY);
   static auto rf     = LLCC68(&module);
-  auto st            = rf.begin(434, 500.0, 7, 7,
+  auto st            = rf.begin(433.2, 500.0, 10, 7,
                                 RADIOLIB_SX126X_SYNC_WORD_PRIVATE,
                                 22, 8, 1.6);
   if (st != RADIOLIB_ERR_NONE) {
