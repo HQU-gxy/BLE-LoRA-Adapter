@@ -122,6 +122,7 @@ size_t try_receive(uint8_t *buf, size_t max_size,
   auto length = rf.getPacketLength(true);
   if (length > max_size) {
     ESP_LOGE(TAG, "packet length %d > %d max buffer size", length, max_size);
+    xSemaphoreGive(lk);
     return 0;
   }
   auto err = rf.readData(buf, length);
@@ -147,6 +148,7 @@ size_t try_receive(uint8_t *buf, size_t max_size,
   }
   if (err != RADIOLIB_ERR_NONE) {
     ESP_LOGE(TAG, "failed to read data, code %d", err);
+    xSemaphoreGive(lk);
     return 0;
   }
   xSemaphoreGive(lk);
