@@ -102,6 +102,18 @@ struct repeater_status {
     }
     return data;
   }
+  static std::string to_string(const t &data) {
+    auto ss = std::stringstream();
+    ss << "repeater_addr="
+       << utils::toHex(data.repeater_addr.data(), data.repeater_addr.size());
+    ss << ", key=" << static_cast<int>(data.key)
+       << ", has_device=" << (data.device ? "true" : "false");
+    if (data.device) {
+      ss << ", device_name=" << data.device->name;
+      ss << ", device_addr=" << utils::toHex(data.device->addr.data(), data.device->addr.size());
+    }
+    return ss.str();
+  }
 };
 }
 
