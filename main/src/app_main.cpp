@@ -14,6 +14,7 @@
 #include <cstring>
 #include <utility>
 #include <esp_random.h>
+#include <iostream>
 
 // #define DISABLE_LORA
 
@@ -76,7 +77,7 @@ public:
       param->fn();
     };
     this->timer = xTimerCreate("send_timer",
-                               interval.count(),
+                               pdMS_TO_TICKS(interval.count()),
                                pdFALSE,
                                &this->timer_param,
                                run_send_task);
@@ -158,7 +159,7 @@ size_t try_receive(uint8_t *buf, size_t max_size,
 struct handle_message_callbacks_t {
   std::function<void(uint8_t *data, size_t size, std::chrono::milliseconds)> schedule = nullptr;
   std::function<void(uint8_t *data, size_t size)> send                                = nullptr;
-  std::function<etl::optional<blue::HeartMonitor>()> get_device                       = nullptr;
+  std::function<std::unique_ptr<blue::HeartMonitor>()> get_device                       = nullptr;
   std::function<void(HrLoRa::name_map_key_t)> set_name_map_key                        = nullptr;
   std::function<HrLoRa::name_map_key_t()> get_name_map_key                            = nullptr;
 };
@@ -188,21 +189,24 @@ void handle_message(uint8_t *data, size_t size, const handle_message_callbacks_t
     return eq;
   };
   auto get_device_status = [&callbacks]() {
+    auto TAG            = "device status";
     auto my_addr        = NimBLEDevice::getAddress();
     auto my_addr_native = my_addr.getNative();
     auto status         = HrLoRa::repeater_status::t{
                 .repeater_addr = HrLoRa::addr_t{},
                 .key           = callbacks.get_name_map_key(),
     };
-    std::copy(my_addr_native, my_addr_native + HrLoRa::BLE_ADDR_SIZE, status.repeater_addr.data());
+    std::memcpy(status.repeater_addr.data(), my_addr_native, status.repeater_addr.size());
     auto device = callbacks.get_device();
     if (device) {
       auto dev = HrLoRa::hr_device::t{};
       std::copy(device->addr.begin(), device->addr.end(), dev.addr.data());
       dev.name = device->name;
+      status.device = dev;
     } else {
       status.device = etl::nullopt;
     }
+    ESP_LOGI(TAG, "status=%s", HrLoRa::repeater_status::to_string(status).c_str());
     return status;
   };
 
@@ -227,7 +231,9 @@ void handle_message(uint8_t *data, size_t size, const handle_message_callbacks_t
         ESP_LOGE(TAG, "failed to marshal query_device_by_mac_response");
         break;
       }
-      auto interval = std::chrono::milliseconds{rng.range(0, common::MAX_RF_MSG_SCHEDULE_DELAY_MS)};
+      auto interval      = std::chrono::milliseconds{rng.range(0, common::MAX_RF_MSG_SCHEDULE_DELAY_MS)};
+      constexpr auto TAG = "schedule";
+      ESP_LOGI(TAG, "schedule time=%lldms", interval.count());
       callbacks.schedule(buf, sz, interval);
       break;
     }
@@ -253,6 +259,7 @@ void handle_message(uint8_t *data, size_t size, const handle_message_callbacks_t
       break;
     }
     case HrLoRa::hr_data::magic:
+    case HrLoRa::named_hr_data::magic:
     case HrLoRa::repeater_status::magic: {
       // from other repeater. do nothing.
       return;
@@ -352,7 +359,6 @@ void app_main() {
   auto &device_char    = *hr_service.createCharacteristic(BLE_CHAR_DEVICE_UUID,
                                                           NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY);
   static auto white_cb = WhiteListCallback();
-  white_char.setCallbacks(&white_cb);
   white_cb.on_request_address = []() {
     return scan_manager.get_target_addr();
   };
@@ -366,6 +372,7 @@ void app_main() {
       scan_manager.set_target_addr(etl::nullopt);
     }
   };
+  white_char.setCallbacks(&white_cb);
 
   /**
    * @brief should always allocate on heap when using `run_recv_task`
@@ -385,7 +392,17 @@ void app_main() {
   static auto handle_message_callbacks = handle_message_callbacks_t{
       .schedule         = [](uint8_t *data, size_t size, std::chrono::milliseconds interval) { send_scheduler.schedule(data, size, interval); },
       .send             = [rf_lock](uint8_t *data, size_t size) { try_transmit(data, size, rf_lock, send_lk_timeout_tick, rf); },
-      .get_device       = []() { return scan_manager.get_device(); },
+      .get_device       = []() {
+        const auto TAG = "get_device";
+        auto dev = scan_manager.get_device();
+        if (dev) {
+          ESP_LOGI(TAG, "name=%s; addr=%s",
+                   dev->name.c_str(),
+                   utils::toHex(dev->addr.data(), dev->addr.size()).c_str());
+        } else {
+          ESP_LOGW(TAG, "no device");
+        }
+        return dev; },
       .set_name_map_key = [name_map_key_ptr](HrLoRa::name_map_key_t key) { *name_map_key_ptr = key; },
       .get_name_map_key = [name_map_key_ptr]() { return *name_map_key_ptr; },
   };
