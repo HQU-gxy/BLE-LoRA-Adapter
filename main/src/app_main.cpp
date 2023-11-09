@@ -16,7 +16,7 @@
 #include <esp_random.h>
 #include <iostream>
 
-// #define DISABLE_LORA
+ #define DISABLE_LORA
 
 extern "C" void app_main();
 
@@ -411,7 +411,7 @@ void app_main() {
   static auto handle_message_callbacks = handle_message_callbacks_t{
       .schedule         = [](uint8_t *data, size_t size, std::chrono::milliseconds interval) {},
       .send             = [](uint8_t *data, size_t size) {},
-      .get_device       = []() { return etl::nullopt; },
+      .get_device       = []() { return nullptr; },
       .set_name_map_key = [name_map_key_ptr](HrLoRa::name_map_key_t key) { *name_map_key_ptr = key; },
       .get_name_map_key = [name_map_key_ptr]() { return *name_map_key_ptr; },
   };
