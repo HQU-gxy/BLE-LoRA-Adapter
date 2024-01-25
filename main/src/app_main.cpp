@@ -12,17 +12,13 @@
 #include <freertos/event_groups.h>
 #include <etl/random.h>
 #include <cstring>
-#include <utility>
 #include <esp_random.h>
-#include <iostream>
-
- #define DISABLE_LORA
 
 extern "C" void app_main();
 
-const auto RecvEvt = BIT0;
+constexpr auto RecvEvt = BIT0;
 
-static const auto send_lk_timeout_tick = 100;
+constexpr auto send_lk_timeout_tick = 100;
 
 // https://docs.espressif.com/projects/esp-idf/en/v5.0/esp32c3/api-reference/system/power_management.html
 // https://github.com/espressif/esp-idf/tree/b4268c874a4/examples/wifi/power_save
@@ -111,7 +107,7 @@ void try_transmit(uint8_t *data, size_t size,
   xSemaphoreGive(lk);
 }
 
-size_t try_receive(uint8_t *buf, size_t max_size,
+size_t try_receive(uint8_t *buf, const size_t max_size,
                    SemaphoreHandle_t lk, TickType_t timeout_tick,
                    LLCC68 &rf) {
   const auto TAG = "try_receive";
@@ -120,15 +116,15 @@ size_t try_receive(uint8_t *buf, size_t max_size,
     ESP_LOGE(TAG, "failed to take rf_lock");
     return 0;
   }
-  auto length = rf.getPacketLength(true);
+  const auto length = rf.getPacketLength(true);
   if (length > max_size) {
     ESP_LOGE(TAG, "packet length %d > %d max buffer size", length, max_size);
     xSemaphoreGive(lk);
     return 0;
   }
-  auto err = rf.readData(buf, length);
+  const auto err = rf.readData(buf, length);
   std::string irq_status_str;
-  auto status = rf.getIrqStatus();
+  const auto status = rf.getIrqStatus();
   if (status & RADIOLIB_SX126X_IRQ_TIMEOUT) {
     irq_status_str += "t";
   }
@@ -159,7 +155,7 @@ size_t try_receive(uint8_t *buf, size_t max_size,
 struct handle_message_callbacks_t {
   std::function<void(uint8_t *data, size_t size, std::chrono::milliseconds)> schedule = nullptr;
   std::function<void(uint8_t *data, size_t size)> send                                = nullptr;
-  std::function<std::unique_ptr<blue::HeartMonitor>()> get_device                       = nullptr;
+  std::function<std::unique_ptr<blue::HeartMonitor>()> get_device                     = nullptr;
   std::function<void(HrLoRa::name_map_key_t)> set_name_map_key                        = nullptr;
   std::function<HrLoRa::name_map_key_t()> get_name_map_key                            = nullptr;
 };
@@ -201,7 +197,7 @@ void handle_message(uint8_t *data, size_t size, const handle_message_callbacks_t
     if (device) {
       auto dev = HrLoRa::hr_device::t{};
       std::copy(device->addr.begin(), device->addr.end(), dev.addr.data());
-      dev.name = device->name;
+      dev.name      = device->name;
       status.device = dev;
     } else {
       status.device = etl::nullopt;
@@ -231,8 +227,8 @@ void handle_message(uint8_t *data, size_t size, const handle_message_callbacks_t
         ESP_LOGE(TAG, "failed to marshal query_device_by_mac_response");
         break;
       }
-      auto interval      = std::chrono::milliseconds{rng.range(0, common::MAX_RF_MSG_SCHEDULE_DELAY_MS)};
-      constexpr auto TAG = "schedule";
+      const auto interval = std::chrono::milliseconds{rng.range(0, common::MAX_RF_MSG_SCHEDULE_DELAY_MS)};
+      constexpr auto TAG  = "schedule";
       ESP_LOGI(TAG, "schedule time=%lldms", interval.count());
       callbacks.schedule(buf, sz, interval);
       break;
@@ -352,13 +348,13 @@ void app_main() {
   static auto scan_manager = ScanManager();
   auto &hr_service         = *server.createService(BLE_CHAR_HR_SERVICE_UUID);
   // repeat the data from the connected device
-  auto &hr_char        = *hr_service.createCharacteristic(BLE_CHAR_HR_CHAR_UUID,
-                                                          NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY);
-  auto &white_char     = *hr_service.createCharacteristic(BLE_CHAR_WHITE_LIST_UUID,
-                                                          NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::NOTIFY);
-  auto &device_char    = *hr_service.createCharacteristic(BLE_CHAR_DEVICE_UUID,
-                                                          NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY);
-  static auto white_cb = WhiteListCallback();
+  auto &hr_char               = *hr_service.createCharacteristic(BLE_CHAR_HR_CHAR_UUID,
+                                                                 NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY);
+  auto &white_char            = *hr_service.createCharacteristic(BLE_CHAR_WHITE_LIST_UUID,
+                                                                 NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::NOTIFY);
+  auto &device_char           = *hr_service.createCharacteristic(BLE_CHAR_DEVICE_UUID,
+                                                                 NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY);
+  static auto white_cb        = WhiteListCallback();
   white_cb.on_request_address = []() {
     return scan_manager.get_target_addr();
   };
@@ -419,11 +415,11 @@ void app_main() {
 
 #ifndef DISABLE_LORA
   auto recv_task = [evt_grp, rf_lock](LLCC68 &rf) {
-    const auto TAG = "recv";
+    constexpr auto TAG = "recv";
     for (;;) {
       xEventGroupWaitBits(evt_grp, RecvEvt, pdTRUE, pdFALSE, portMAX_DELAY);
       uint8_t data[255];
-      auto size = try_receive(data, sizeof(data), rf_lock, send_lk_timeout_tick, rf);
+      const auto size = try_receive(data, std::size(data), rf_lock, send_lk_timeout_tick, rf);
       if (size == 0) {
         continue;
       } else {
@@ -437,8 +433,8 @@ void app_main() {
    * a helper function to run a function on a new FreeRTOS task
    */
   auto run_recv_task = [](void *pvParameter) {
-    auto param = reinterpret_cast<recv_task_param_t *>(pvParameter);
-    [[unlikely]] if (param->task != nullptr && param->rf != nullptr) {
+    const auto param = reinterpret_cast<recv_task_param_t *>(pvParameter);
+    [[likely]] if (param->task != nullptr && param->rf != nullptr) {
       param->task(*param->rf);
     } else {
       ESP_LOGW("recv task", "bad precondition");
@@ -451,7 +447,7 @@ void app_main() {
 
   scan_manager.on_result = [&device_char](std::string device_name, const uint8_t *addr) {
     uint8_t buf[32]                 = {0};
-    auto TAG                        = "on_result";
+    constexpr auto TAG              = "on_result";
     auto ostream                    = pb_ostream_from_buffer(buf, sizeof(buf));
     ::bluetooth_device_pb device_pb = bluetooth_device_pb_init_zero;
     device_pb.mac.funcs.encode      = [](pb_ostream_t *stream, const pb_field_t *field, void *const *arg) {
