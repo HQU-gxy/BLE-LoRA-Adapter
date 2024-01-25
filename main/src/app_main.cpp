@@ -12,16 +12,15 @@
 #include <freertos/event_groups.h>
 #include <etl/random.h>
 #include <cstring>
-#include <utility>
 
 extern "C" void app_main();
 
-const auto RecvEvt     = BIT0;
-const auto ScheduleEvt = BIT2;
+constexpr auto RecvEvt     = BIT0;
+constexpr auto ScheduleEvt = BIT2;
 
 using rf_lock_t = decltype(xSemaphoreCreateMutex());
 
-static const auto send_lk_timeout_tick = 100;
+static constexpr auto send_lk_timeout_tick = 100;
 
 class SendScheduler {
   static constexpr auto TAG = "SendScheduler";
@@ -227,7 +226,8 @@ void app_main() {
   hal.init();
   ESP_LOGI(TAG, "hal init success!");
   static auto module = Module(&hal, pin::CS, pin::DIO1, pin::RST, pin::BUSY);
-  static auto rf     = LLCC68(&module);
+  const auto rf_     = new LLCC68(&module);
+  auto &rf           = *rf_;
   auto st            = rf.begin(434, 500.0, 7, 7,
                                 RADIOLIB_SX126X_SYNC_WORD_PRIVATE,
                                 22, 8, 1.6);
@@ -298,21 +298,20 @@ void app_main() {
    * @brief should always allocate on heap when using `run_recv_task`
    */
   struct recv_task_param_t {
-    std::function<void(LLCC68 &)> task;
-    LLCC68 *rf;
+    std::function<void()> task;
     TaskHandle_t handle;
     EventGroupHandle_t evt_grp;
   };
 
   static auto handle_message_callbacks = handle_message_callbacks_t{
-      .send             = [rf_lock](uint8_t *data, size_t size) { try_transmit(data, size, rf_lock, send_lk_timeout_tick, rf); },
+      .send             = [rf_lock, &rf](uint8_t *data, size_t size) { try_transmit(data, size, rf_lock, send_lk_timeout_tick, rf); },
       .get_device       = []() { return scan_manager.get_device(); },
       .set_name_map_key = [name_map_key_ptr](HrLoRa::name_map_key_t key) { *name_map_key_ptr = key; },
       .get_name_map_key = [name_map_key_ptr]() { return *name_map_key_ptr; },
   };
 
-  auto recv_task = [evt_grp, rf_lock](LLCC68 &rf) {
-    const auto TAG = "recv";
+  const auto recv_task = [evt_grp, rf_lock, &rf] {
+    constexpr auto TAG = "recv";
     for (;;) {
       xEventGroupWaitBits(evt_grp, RecvEvt, pdTRUE, pdFALSE, portMAX_DELAY);
       uint8_t data[255];
@@ -326,7 +325,6 @@ void app_main() {
       if (size == 0) {
         ESP_LOGW(TAG, "empty data");
       }
-      ESP_LOGI(TAG, "recv=%s", utils::toHex(data, size).c_str());
       handle_message(data, size, handle_message_callbacks);
     }
   };
@@ -334,18 +332,18 @@ void app_main() {
   /**
    * a helper function to run a function on a new FreeRTOS task
    */
-  auto run_recv_task = [](void *pvParameter) {
-    auto param = reinterpret_cast<recv_task_param_t *>(pvParameter);
-    [[unlikely]] if (param->task != nullptr && param->rf != nullptr) {
-      param->task(*param->rf);
+  static constexpr auto run_recv_task = [](void *pvParameter) {
+    const auto param = static_cast<recv_task_param_t *>(pvParameter);
+    [[likely]] if (param->task != nullptr) {
+      param->task();
     } else {
       ESP_LOGW("recv task", "bad precondition");
     }
-    auto handle = param->handle;
+    const auto handle = param->handle;
     delete param;
     vTaskDelete(handle);
   };
-  static auto recv_param = recv_task_param_t{recv_task, &rf, nullptr, evt_grp};
+  static auto recv_param = recv_task_param_t{recv_task, nullptr, evt_grp};
 
   scan_manager.on_result = [&device_char](std::string device_name, const uint8_t *addr) {
     uint8_t buf[32]                 = {0};
@@ -359,8 +357,8 @@ void app_main() {
       }
       return pb_encode_string(stream, addr_ptr, white_list::BLE_MAC_ADDR_SIZE);
     };
-    device_pb.mac.arg           = const_cast<uint8_t *>(addr);
-    const auto target_name_size = sizeof(device_pb.name) - 1;
+    device_pb.mac.arg               = const_cast<uint8_t *>(addr);
+    constexpr auto target_name_size = std::size(device_pb.name) - 1;
     if (device_name.size() > target_name_size) {
       device_name.resize(target_name_size);
       ESP_LOGW(TAG, "Truncated device name to %s", device_name.c_str());
@@ -376,7 +374,7 @@ void app_main() {
     device_char.notify();
   };
 
-  scan_manager.on_data = [&hr_char, name_map_key_ptr, rf_lock](HeartMonitor &device, uint8_t *data, size_t size) {
+  scan_manager.on_data = [&hr_char, name_map_key_ptr, rf_lock, &rf](HeartMonitor &device, uint8_t *data, size_t size) {
     const auto TAG = "scan_manager";
     // ESP_LOGI(TAG, "data: %s", utils::toHex(data, size).c_str());
     // https://community.home-assistant.io/t/ble-heartrate-monitor/300354/43
