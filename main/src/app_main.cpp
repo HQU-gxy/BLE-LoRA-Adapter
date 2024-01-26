@@ -1,6 +1,11 @@
+#include <esp_random.h>
+#include <esp_log.h>
+#include <etl/random.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
-#include <esp_log.h>
+#include <freertos/event_groups.h>
+#include <endian.h>
+#include <cstring>
 #include "scan_manager.h"
 #include "server_callback.h"
 #include "whitelist_char_callback.h"
@@ -8,11 +13,6 @@
 #include "common.h"
 #include "hr_lora.h"
 #include "app_nvs.h"
-#include <endian.h>
-#include <freertos/event_groups.h>
-#include <etl/random.h>
-#include <cstring>
-#include <esp_random.h>
 
 extern "C" void app_main();
 
@@ -47,10 +47,10 @@ public:
    * @brief schedule the data to be sent
    * @param pdata the data to be sent
    * @param size the size of the data
-   * @param interval the interval between transmission
+   * @param interval_ms the interval between transmission, in milliseconds
    * @return if the previous timer is replaced
    */
-  bool schedule(uint8_t *pdata, uint8_t size, std::chrono::milliseconds interval) {
+  bool schedule(uint8_t *pdata, uint8_t size, size_t interval_ms) {
     this->data       = std::vector<uint8_t>(pdata, pdata + size);
     bool is_replaced = false;
     if (this->timer != nullptr) {
@@ -73,7 +73,7 @@ public:
       param->fn();
     };
     this->timer = xTimerCreate("send_timer",
-                               pdMS_TO_TICKS(interval.count()),
+                               pdMS_TO_TICKS(interval_ms),
                                pdFALSE,
                                &this->timer_param,
                                run_send_task);
@@ -153,11 +153,11 @@ size_t try_receive(uint8_t *buf, const size_t max_size,
 }
 
 struct handle_message_callbacks_t {
-  std::function<void(uint8_t *data, size_t size, std::chrono::milliseconds)> schedule = nullptr;
-  std::function<void(uint8_t *data, size_t size)> send                                = nullptr;
-  std::function<std::unique_ptr<blue::HeartMonitor>()> get_device                     = nullptr;
-  std::function<void(HrLoRa::name_map_key_t)> set_name_map_key                        = nullptr;
-  std::function<HrLoRa::name_map_key_t()> get_name_map_key                            = nullptr;
+  std::function<void(uint8_t *data, size_t size, size_t interval_ms)> schedule = nullptr;
+  std::function<void(uint8_t *data, size_t size)> send                         = nullptr;
+  std::function<std::unique_ptr<blue::HeartMonitor>()> get_device              = nullptr;
+  std::function<void(HrLoRa::name_map_key_t)> set_name_map_key                 = nullptr;
+  std::function<HrLoRa::name_map_key_t()> get_name_map_key                     = nullptr;
 };
 
 /**
@@ -167,33 +167,33 @@ struct handle_message_callbacks_t {
  * @param callbacks the callbacks to handle the message. This function would do nothing if any of the callback is empty.
  */
 void handle_message(uint8_t *data, size_t size, const handle_message_callbacks_t &callbacks) {
-  const auto TAG   = "recv";
-  bool is_cb_empty = callbacks.send == nullptr ||
-                     callbacks.schedule == nullptr ||
-                     callbacks.get_device == nullptr ||
-                     callbacks.set_name_map_key == nullptr ||
-                     callbacks.get_name_map_key == nullptr;
+  const auto TAG         = "recv";
+  const bool is_cb_empty = callbacks.send == nullptr ||
+                           callbacks.schedule == nullptr ||
+                           callbacks.get_device == nullptr ||
+                           callbacks.set_name_map_key == nullptr ||
+                           callbacks.get_name_map_key == nullptr;
   if (is_cb_empty) {
     ESP_LOGE(TAG, "at least one callback is empty");
     return;
   }
   auto is_my_address = [](const HrLoRa::addr_t &req_addr) {
-    auto my_addr        = NimBLEDevice::getAddress();
-    auto my_addr_native = my_addr.getNative();
-    bool is_broadcast   = std::equal(req_addr.begin(), req_addr.end(), HrLoRa::broadcast_addr.data());
-    bool eq             = is_broadcast || std::equal(req_addr.begin(), req_addr.end(), my_addr_native);
+    const auto my_addr        = NimBLEDevice::getAddress();
+    const auto my_addr_native = my_addr.getNative();
+    const bool is_broadcast   = std::equal(req_addr.begin(), req_addr.end(), HrLoRa::broadcast_addr.data());
+    const bool eq             = is_broadcast || std::equal(req_addr.begin(), req_addr.end(), my_addr_native);
     return eq;
   };
   auto get_device_status = [&callbacks]() {
-    auto TAG            = "device status";
-    auto my_addr        = NimBLEDevice::getAddress();
-    auto my_addr_native = my_addr.getNative();
-    auto status         = HrLoRa::repeater_status::t{
-                .repeater_addr = HrLoRa::addr_t{},
-                .key           = callbacks.get_name_map_key(),
+    constexpr auto TAG        = "device status";
+    const auto my_addr        = NimBLEDevice::getAddress();
+    const auto my_addr_native = my_addr.getNative();
+    auto status               = HrLoRa::repeater_status::t{
+                      .repeater_addr = HrLoRa::addr_t{},
+                      .key           = callbacks.get_name_map_key(),
     };
-    std::memcpy(status.repeater_addr.data(), my_addr_native, status.repeater_addr.size());
-    auto device = callbacks.get_device();
+    std::copy_n(my_addr_native, status.repeater_addr.size(), status.repeater_addr.data());
+    const auto device = callbacks.get_device();
     if (device) {
       auto dev = HrLoRa::hr_device::t{};
       std::copy(device->addr.begin(), device->addr.end(), dev.addr.data());
@@ -206,8 +206,8 @@ void handle_message(uint8_t *data, size_t size, const handle_message_callbacks_t
     return status;
   };
 
-  static auto rng = etl::random_xorshift(esp_random());
-  auto magic      = data[0];
+  static auto rng  = etl::random_xorshift(esp_random());
+  const auto magic = data[0];
   switch (magic) {
     case HrLoRa::query_device_by_mac::magic: {
       auto r = HrLoRa::query_device_by_mac::unmarshal(data, size);
@@ -227,9 +227,9 @@ void handle_message(uint8_t *data, size_t size, const handle_message_callbacks_t
         ESP_LOGE(TAG, "failed to marshal query_device_by_mac_response");
         break;
       }
-      const auto interval = std::chrono::milliseconds{rng.range(0, common::MAX_RF_MSG_SCHEDULE_DELAY_MS)};
+      const auto interval = rng.range(0, common::MAX_RF_MSG_SCHEDULE_DELAY_MS);
       constexpr auto TAG  = "schedule";
-      ESP_LOGI(TAG, "schedule time=%lldms", interval.count());
+      ESP_LOGI(TAG, "schedule time=%lums", interval);
       callbacks.schedule(buf, sz, interval);
       break;
     }
@@ -386,8 +386,8 @@ void app_main() {
     try_transmit(data, size, rf_lock, send_lk_timeout_tick, rf);
   };
   static auto handle_message_callbacks = handle_message_callbacks_t{
-      .schedule         = [](uint8_t *data, size_t size, std::chrono::milliseconds interval) { send_scheduler.schedule(data, size, interval); },
-      .send             = [rf_lock](uint8_t *data, size_t size) { try_transmit(data, size, rf_lock, send_lk_timeout_tick, rf); },
+      .schedule         = [](uint8_t *data, const size_t size, const size_t interval_ms) { send_scheduler.schedule(data, size, interval_ms); },
+      .send             = [rf_lock](uint8_t *data, const size_t size) { try_transmit(data, size, rf_lock, send_lk_timeout_tick, rf); },
       .get_device       = []() {
         const auto TAG = "get_device";
         auto dev = scan_manager.get_device();
@@ -514,14 +514,14 @@ void app_main() {
                      .key = *name_map_key_ptr,
                      .hr  = static_cast<uint8_t>(hr),
       };
-      std::copy(device.addr.begin(), device.addr.end(), named_hr_data.addr.begin());
+      std::ranges::copy(device.addr, named_hr_data.addr.begin());
       sz = HrLoRa::named_hr_data::marshal(named_hr_data, buf, sizeof(buf));
       if (sz == 0) {
         ESP_LOGE(TAG, "failed to marshal named_hr_data");
         return;
       }
     } else {
-      auto hr_data = HrLoRa::hr_data::t{
+      const auto hr_data = HrLoRa::hr_data::t{
                      .key = *name_map_key_ptr,
                      .hr  = static_cast<uint8_t>(hr),
       };
